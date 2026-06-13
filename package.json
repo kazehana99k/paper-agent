@@ -1,0 +1,48 @@
+{
+  "name": "paper-agent",
+  "version": "1.0.0",
+  "description": "Local Overleaf + multi-agent research writing app with project modules.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js",
+    "test": "npm run check && node --test tests/*.test.js"
+  },
+  "keywords": [
+    "codex",
+    "claude-code",
+    "overleaf",
+    "multi-agent",
+    "paper-writing",
+    "rag"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "files": [
+    "server.js",
+    "lib/",
+    "public/",
+    "modules/brainstorm/",
+    "modules/japanese-style-rag/module.json",
+    "modules/japanese-style-rag/project/README.md",
+    "modules/japanese-style-rag/project/AGENTS.md",
+    "modules/japanese-style-rag/project/pyproject.toml",
+    "modules/japanese-style-rag/project/src/",
+    "modules/japanese-style-rag/project/scripts/",
+    "modules/japanese-style-rag/project/tests/",
+    "docs/",
+    "config.example.json",
+    "README.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "express": "^5.2.1",
+    "http-proxy-middleware": "^4.1.0",
+    "ws": "^8.21.0"
+  }
+}

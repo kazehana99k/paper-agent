@@ -1,0 +1,2311 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>Paper Agent</title>
+<link rel="stylesheet" href="/__agent/vendor/xterm/css/xterm.css">
+<style>
+  :root {
+    --bg: #16181d;
+    --panel: #1d2026;
+    --panel-2: #23262e;
+    --border: #2e323c;
+    --text: #e8eaed;
+    --muted: #9aa3b2;
+    --accent: #4f9f8f;
+    --accent-soft: rgba(79,159,143,.16);
+    --ok: #6fcf97;
+    --err: #ff8a80;
+    --drawer-w: 640px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden;
+    font-family: "Inter", system-ui, "Noto Sans CJK SC", sans-serif; background: var(--bg); }
+
+  /* ---------- 全屏 Overleaf ---------- */
+  #ol { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+  #ol.hidden { opacity: 0; pointer-events: none; }
+  #ol-empty {
+    position: fixed; inset: 0; z-index: 1;
+    display: none; align-items: center; justify-content: center;
+    background: #f7f8fa; color: #1d2530;
+  }
+  #ol-empty.show { display: flex; }
+  #ol-empty .inner {
+    width: min(620px, 86vw);
+    min-width: 320px; padding: 0 24px;
+  }
+  #ol-empty .eyebrow {
+    color: #4f9f8f; font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .08em; margin-bottom: 12px;
+  }
+  #ol-empty h1 {
+    margin: 0 0 12px; font-size: 28px; line-height: 1.2;
+    letter-spacing: 0; color: #151a21;
+  }
+  #ol-empty p {
+    margin: 0 0 18px; color: #56616f; font-size: 14px; line-height: 1.7;
+  }
+  #ol-empty code {
+    display: block; margin-top: 10px; padding: 10px 12px;
+    border: 1px solid #d9dee7; border-radius: 8px;
+    background: #fff; color: #2b3440; font-size: 12px;
+    white-space: normal; overflow-wrap: anywhere;
+  }
+  #ol-empty .hint {
+    display: flex; gap: 8px; align-items: center;
+    margin-top: 20px; color: #2f6f66; font-size: 13px;
+  }
+  #ol-empty .actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  #ol-empty button {
+    border: 0; border-radius: 8px; background: #4f9f8f; color: #fff;
+    height: 36px; padding: 0 14px; cursor: pointer; font-size: 13px;
+  }
+  #ol-empty button.secondary {
+    background: #fff; color: #2f6f66; border: 1px solid #d9dee7;
+  }
+
+  /* ---------- 悬浮入口 ---------- */
+  #fabs {
+    position: fixed; right: 22px; bottom: 26px; z-index: 50;
+    display: flex; flex-direction: column; gap: 10px; align-items: flex-end;
+  }
+  .fab {
+    min-width: 54px; height: 54px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: linear-gradient(135deg, #5fb6a5, #357d72);
+    color: #fff; font-size: 20px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px; padding: 0 14px;
+    box-shadow: 0 4px 18px rgba(0,0,0,.45), 0 0 0 0 rgba(79,159,143,.5);
+    transition: transform .18s, box-shadow .3s;
+    user-select: none;
+  }
+  .fab-icon { font-size: 23px; line-height: 1; }
+  .fab-label { font-size: 13px; font-weight: 650; white-space: nowrap; }
+  .fab:hover { transform: scale(1.08); }
+  .fab.unread { animation: pulse 1.6s ease-out infinite; }
+  .fab.hidden { display: none; }
+  #fab-jstyle {
+    background: linear-gradient(135deg, #6aa8ff, #4f6fb6);
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 4px 18px rgba(0,0,0,.45), 0 0 0 0 rgba(79,159,143,.55); }
+    70%  { box-shadow: 0 4px 18px rgba(0,0,0,.45), 0 0 0 14px rgba(79,159,143,0); }
+    100% { box-shadow: 0 4px 18px rgba(0,0,0,.45), 0 0 0 0 rgba(79,159,143,0); }
+  }
+  body.open #fabs { display: none; }
+
+  /* ---------- 抽屉 ---------- */
+  #drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 40;
+    width: var(--drawer-w); min-width: 440px; max-width: 90vw;
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    backdrop-filter: blur(14px);
+    border-left: 1px solid var(--border);
+    box-shadow: -12px 0 40px rgba(0,0,0,.5);
+    display: flex; flex-direction: column;
+    transform: translateX(calc(100% + 30px));
+    transition: transform .26s cubic-bezier(.4,0,.2,1);
+  }
+  body.open #drawer { transform: translateX(0); }
+  body.mode-agent #module-panel { display: none !important; }
+  body.mode-jstyle #actions, body.mode-jstyle #workspace, body.mode-jstyle #restart { display: none !important; }
+  body.mode-jstyle #module-panel.show {
+    display: block; flex: 1; min-height: 0; max-height: none; border-bottom: 0;
+  }
+
+  #grip { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; }
+  #grip:hover { background: linear-gradient(to right, transparent, var(--accent-soft)); }
+
+  #head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 12px 14px 10px; border-bottom: 1px solid var(--border);
+    color: var(--text); flex-shrink: 0;
+  }
+  #head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); margin-right: 2px;
+               box-shadow: 0 0 8px var(--ok); }
+  #head .dot.down { background: var(--err); box-shadow: 0 0 8px var(--err); }
+  #head .name { font-weight: 650; font-size: 14px; letter-spacing: .2px; }
+  #head .proj { font-size: 12px; color: var(--muted); margin-left: 4px; max-width: 120px;
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #head .state { font-size: 11px; color: var(--muted); margin-left: 4px; }
+  #head .state.live { color: #a8d8cf; }
+  #thinking {
+    display: none; align-items: center; gap: 3px; margin-left: 2px;
+    width: 24px; height: 16px;
+  }
+  body.agent-running #thinking { display: inline-flex; }
+  #thinking i {
+    width: 4px; height: 4px; border-radius: 50%;
+    background: #a8d8cf; opacity: .45;
+    animation: thinkingDot 1s ease-in-out infinite;
+  }
+  #thinking i:nth-child(2) { animation-delay: .15s; }
+  #thinking i:nth-child(3) { animation-delay: .3s; }
+  @keyframes thinkingDot {
+    0%, 80%, 100% { transform: translateY(0); opacity: .35; }
+    40% { transform: translateY(-4px); opacity: 1; }
+  }
+  #head .sp { flex: 1; }
+  #project-select {
+    max-width: 150px; min-width: 110px; height: 30px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel-2); color: var(--text);
+    font-size: 12px; outline: 0; padding: 0 8px;
+  }
+  #project-select:focus { border-color: var(--accent); }
+
+  .ibtn {
+    background: transparent; border: 1px solid transparent; border-radius: 8px;
+    color: var(--muted); width: 34px; height: 34px; cursor: pointer; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .15s;
+  }
+  .ibtn:hover { color: var(--text); background: var(--panel-2); border-color: var(--border); }
+  .ibtn.accent { color: #a8d8cf; }
+  .ibtn.accent:hover { color: #fff; background: var(--accent-soft); border-color: var(--accent); }
+  .ibtn:disabled { opacity: .4; cursor: default; }
+  .ibtn .spin { display: inline-block; animation: rot 1s linear infinite; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+
+  #actions {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); gap: 6px;
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+    background: rgba(0,0,0,.12); flex-shrink: 0;
+  }
+  .qbtn {
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel-2); color: var(--muted);
+    height: 30px; font-size: 12px; cursor: pointer;
+  }
+  .qbtn:hover { color: var(--text); border-color: var(--accent); background: var(--accent-soft); }
+
+  #agent-guide {
+    display: none; flex-shrink: 0; padding: 10px;
+    border-bottom: 1px solid var(--border); background: rgba(0,0,0,.1);
+  }
+  body.mode-agent #agent-guide { display: block; }
+  .guide-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .guide-text { color: var(--muted); font-size: 12px; line-height: 1.55; margin-bottom: 9px; }
+  .guide-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+  .guide-btn {
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel-2); color: var(--text);
+    min-height: 42px; padding: 7px 8px; cursor: pointer;
+    text-align: left; font-size: 12px; line-height: 1.35;
+  }
+  .guide-btn span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .guide-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+  #module-panel {
+    display: none; flex-shrink: 0; max-height: 46vh; overflow: auto;
+    border-bottom: 1px solid var(--border);
+    background: rgba(11,12,15,.22);
+  }
+  #module-panel.show { display: block; }
+  .module-view { padding: 10px; }
+  .module-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+    margin-bottom: 10px;
+  }
+  .module-title { font-size: 13px; font-weight: 700; color: var(--text); }
+  .module-subtitle { margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+  .module-badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .module-pill {
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 3px 8px; font-size: 11px; color: #a8d8cf; background: rgba(79,159,143,.1);
+    white-space: nowrap;
+  }
+  .module-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+  .module-section {
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px; background: rgba(0,0,0,.1);
+  }
+  .module-section.wide { grid-column: 1 / -1; }
+  .module-section h4 {
+    margin: 0 0 8px; font-size: 12px; color: var(--text); letter-spacing: 0; font-weight: 650;
+  }
+  .module-field { margin-top: 8px; }
+  .module-field:first-of-type { margin-top: 0; }
+  .module-field label {
+    display: block; color: var(--muted); font-size: 11px; margin-bottom: 4px;
+  }
+  #module-panel input, #module-panel textarea, #module-panel select {
+    width: 100%; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); outline: 0;
+    padding: 8px 10px; font-size: 12px; font-family: inherit;
+  }
+  #module-panel textarea { min-height: 72px; resize: vertical; line-height: 1.45; }
+  #module-panel input:focus, #module-panel textarea:focus, #module-panel select:focus { border-color: var(--accent); }
+  .module-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .module-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .module-btn {
+    border: 1px solid var(--border); border-radius: 8px; height: 30px;
+    background: var(--panel-2); color: var(--muted); padding: 0 11px;
+    cursor: pointer; font-size: 12px;
+  }
+  .module-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .module-btn:hover { color: var(--text); border-color: var(--accent); }
+  .module-btn.primary:hover { filter: brightness(1.08); }
+  .module-btn:disabled { opacity: .48; cursor: default; }
+  .module-list { display: grid; gap: 5px; max-height: 132px; overflow: auto; padding-right: 2px; }
+  .module-rowline {
+    display: grid; grid-template-columns: 1fr auto; gap: 8px;
+    color: var(--muted); font-size: 11px; line-height: 1.35;
+  }
+  .module-rowline strong { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+  .module-count { color: #a8d8cf; white-space: nowrap; }
+  .module-empty { color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .module-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+  .module-step {
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px;
+    background: rgba(0,0,0,.1); color: var(--muted); font-size: 11px; line-height: 1.45;
+  }
+  .module-step strong { display: block; color: var(--text); font-size: 12px; margin-bottom: 2px; }
+  .file-picker-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .file-summary {
+    color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 6px;
+    overflow-wrap: anywhere;
+  }
+  .hidden-input { display: none; }
+  .module-advanced { margin-top: 8px; color: var(--muted); font-size: 11px; }
+  .module-advanced summary { cursor: pointer; color: #a8d8cf; }
+  .module-advanced code { overflow-wrap: anywhere; white-space: normal; }
+  #jstyle-result {
+    margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: rgba(0,0,0,.18); color: var(--text);
+    padding: 9px 10px; font: 12px/1.5 "JetBrains Mono", "Noto Sans Mono CJK SC", monospace;
+  }
+  #jstyle-result.ok { border-color: rgba(111,207,151,.5); }
+  #jstyle-result.err { border-color: rgba(255,138,128,.55); color: #ffd8d4; }
+  @media (max-width: 760px) {
+    .module-grid, .module-form-row, .module-steps, .guide-actions { grid-template-columns: 1fr; }
+  }
+
+  #workspace {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+  }
+  #term-wrap {
+    flex: 1; min-height: 0; padding: 10px 2px 8px 10px;
+    cursor: text;
+  }
+  #term-wrap .xterm { height: 100%; }
+  #composer-shell {
+    flex-shrink: 0; padding: 10px; border-top: 1px solid var(--border);
+    background: linear-gradient(to bottom, rgba(0,0,0,.04), rgba(0,0,0,.18));
+  }
+  #composer-box {
+    display: grid; grid-template-columns: 1fr 38px; gap: 8px; align-items: end;
+    border: 1px solid var(--border); border-radius: 12px;
+    background: rgba(22,24,29,.96); padding: 8px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  #composer-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(79,159,143,.12), inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  body.agent-running #composer-box {
+    border-color: rgba(79,159,143,.72);
+    animation: composerThinking 1.8s ease-in-out infinite;
+  }
+  @keyframes composerThinking {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(79,159,143,.08), inset 0 1px 0 rgba(255,255,255,.03); }
+    50% { box-shadow: 0 0 0 3px rgba(79,159,143,.16), inset 0 1px 0 rgba(255,255,255,.03); }
+  }
+  #composer {
+    width: 100%; min-height: 24px; max-height: 150px; resize: none;
+    border: 0; outline: 0; background: transparent; color: var(--text);
+    font: 13px/1.55 "Inter", system-ui, "Noto Sans CJK SC", sans-serif;
+    padding: 3px 2px; overflow-y: auto;
+  }
+  #composer::placeholder { color: #687180; }
+  #send {
+    width: 38px; height: 34px; border: 0; border-radius: 9px;
+    background: var(--accent); color: #fff; cursor: pointer; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #send:hover { filter: brightness(1.08); }
+  #send:disabled { opacity: .45; cursor: default; }
+  #send.busy {
+    background: #3f8176;
+    font-size: 0;
+    pointer-events: none;
+  }
+  #send.busy::before {
+    content: "";
+    width: 15px; height: 15px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.35);
+    border-top-color: #fff;
+    animation: rot .75s linear infinite;
+  }
+  #send.busy { color: transparent; }
+  @media (prefers-reduced-motion: reduce) {
+    .fab.unread, .ibtn .spin, #thinking i, body.agent-running #composer-box, #send.busy::before {
+      animation: none !important;
+    }
+  }
+  #control-row {
+    display: flex; align-items: center; justify-content: flex-start; gap: 8px;
+    margin-top: 7px;
+  }
+  .keybtn {
+    border: 1px solid var(--border); border-radius: 8px;
+    background: transparent; color: var(--muted);
+    height: 26px; padding: 0 9px; font-size: 11px; cursor: pointer;
+  }
+  .keybtn:hover { color: var(--text); background: var(--panel-2); border-color: var(--accent); }
+
+  /* ---------- toast ---------- */
+  #toasts { position: fixed; right: 22px; bottom: 156px; z-index: 60;
+            display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+  .toast {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-left: 3px solid var(--ok);
+    border-radius: 10px; padding: 10px 14px; font-size: 13px; max-width: 420px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.45);
+    animation: slidein .22s ease-out;
+  }
+  .toast.err { border-left-color: var(--err); }
+  @keyframes slidein { from { opacity: 0; transform: translateY(8px); } }
+
+  /* ---------- 快捷动作参数 ---------- */
+  #action-mask {
+    position: fixed; inset: 0; z-index: 65; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,.48); backdrop-filter: blur(2px);
+  }
+  #action-mask.show { display: flex; }
+  #action-dialog {
+    width: min(460px, 90vw); border: 1px solid var(--border);
+    border-radius: 12px; background: var(--panel); color: var(--text);
+    box-shadow: 0 18px 50px rgba(0,0,0,.55); padding: 18px;
+  }
+  #action-dialog h3 { margin: 0 0 5px; font-size: 15px; letter-spacing: 0; }
+  #action-dialog p { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+  #action-dialog input {
+    width: 100%; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); outline: 0;
+    padding: 10px 11px; font-size: 13px; font-family: inherit;
+  }
+  #action-dialog input:focus { border-color: var(--accent); }
+  #action-dialog .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+  /* ---------- 新建项目向导 ---------- */
+  #project-mask {
+    position: fixed; inset: 0; z-index: 68; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,.58); backdrop-filter: blur(3px);
+  }
+  #project-mask.show { display: flex; }
+  #project-dialog {
+    width: min(560px, 92vw); border: 1px solid var(--border);
+    border-radius: 14px; background: var(--panel); color: var(--text);
+    box-shadow: 0 20px 60px rgba(0,0,0,.6); padding: 20px;
+  }
+  #project-dialog h3 { margin: 0 0 5px; font-size: 16px; }
+  #project-dialog p { margin: 0 0 14px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .wizard-types { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .wizard-type {
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel-2); color: var(--text);
+    min-height: 74px; padding: 10px; cursor: pointer; text-align: left;
+    font-size: 13px; line-height: 1.45;
+  }
+  .wizard-type span { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+  .wizard-type.active { border-color: var(--accent); background: var(--accent-soft); }
+  .wizard-progress {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0 12px;
+  }
+  .wizard-progress span {
+    border: 1px solid var(--border); border-radius: 999px; padding: 5px 8px;
+    color: var(--muted); background: rgba(0,0,0,.08); font-size: 11px; text-align: center;
+  }
+  .wizard-progress span.active { color: #fff; border-color: var(--accent); background: var(--accent-soft); }
+  .wizard-step { display: none; }
+  .wizard-step.show { display: block; }
+  #project-dialog label { display: block; color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
+  #project-dialog input, #project-dialog select {
+    width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 13px; outline: none;
+  }
+  #project-dialog input:focus, #project-dialog select:focus { border-color: var(--accent); }
+  .wizard-note {
+    border: 1px solid var(--border); border-radius: 8px; padding: 9px 10px;
+    color: var(--muted); background: rgba(0,0,0,.1); font-size: 12px; line-height: 1.55;
+  }
+  .wizard-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .wizard-advanced { margin-top: 10px; color: var(--muted); font-size: 12px; }
+  .wizard-advanced summary { cursor: pointer; color: #a8d8cf; }
+  .wizard-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+  /* ---------- 设置弹窗 ---------- */
+  #mask { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(3px);
+          display: none; align-items: center; justify-content: center; z-index: 70; }
+  #mask.show { display: flex; }
+  #modal { background: var(--panel); color: var(--text); border: 1px solid var(--border);
+           border-radius: 14px; padding: 22px 24px; width: min(620px, 92vw); max-height: 88vh; overflow: auto;
+           box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  #modal h3 { margin: 0 0 4px; font-size: 16px; }
+  #modal p  { margin: 0 0 14px; font-size: 12px; color: var(--muted); }
+  #modal label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+  #modal input, #modal textarea, #modal select {
+    width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-size: 13px; outline: none;
+  }
+  #modal textarea { min-height: 86px; resize: vertical; line-height: 1.45; font-family: inherit; }
+  #modal textarea.mono { font-family: "JetBrains Mono", "Noto Sans Mono CJK SC", monospace; font-size: 12px; }
+  #modal input:focus, #modal textarea:focus, #modal select:focus { border-color: var(--accent); }
+  #modal .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  #modal .threecol { display: grid; grid-template-columns: .8fr 1fr 1.2fr; gap: 12px; align-items: end; }
+  #modal .inline { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+  #modal .agent-detail { display: none; }
+  #modal .agent-detail.show { display: block; }
+  #modal .model-custom { display: none; grid-column: 1 / -1; margin-top: 8px; }
+  #modal .model-custom.show { display: block; }
+  #modal .hintline { min-height: 18px; margin-top: 5px; color: var(--muted); font-size: 11px; }
+  #modal details { margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: rgba(0,0,0,.08); }
+  #modal summary { color: var(--muted); cursor: pointer; font-size: 12px; }
+  #modal details:not([open]) > :not(summary) { display: none !important; }
+  #modal .checkline { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: var(--muted); font-size: 12px; }
+  #modal .checkline input { width: auto; }
+  #modal hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0 10px; }
+  #modal .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+  .btn { border: 0; border-radius: 8px; padding: 8px 18px; font-size: 13px; cursor: pointer; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn.ghost { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+  .btn.ghost:hover { color: var(--text); }
+  .btn.block { width: 100%; height: 36px; margin-top: 0; }
+</style>
+</head>
+<body>
+  <iframe id="ol" src="about:blank"></iframe>
+  <div id="ol-empty" aria-live="polite">
+    <div class="inner">
+      <div class="eyebrow">本地写作项目</div>
+      <h1 id="empty-title">本地项目</h1>
+      <p id="empty-desc">这个项目没有绑定 Overleaf，因此左侧不会打开论文编辑器。</p>
+      <code id="empty-path"></code>
+      <div class="actions">
+        <button id="empty-create-overleaf" type="button">创建 Overleaf 并打开</button>
+        <button class="secondary" id="empty-open-agent" type="button">打开写作助手</button>
+      </div>
+      <div class="hint">请使用右侧写作助手输入框和快捷动作处理这个项目。</div>
+    </div>
+  </div>
+
+  <div id="fabs">
+    <button class="fab" id="fab-agent" title="写作助手"><span class="fab-icon">✳</span><span class="fab-label">写作助手</span></button>
+    <button class="fab" id="fab-jstyle" title="日语报告助手"><span class="fab-icon">日</span><span class="fab-label">日语报告</span></button>
+  </div>
+
+  <div id="drawer">
+    <div id="grip"></div>
+    <div id="head">
+      <div class="dot" id="conn"></div>
+      <span class="name" id="agent-name">Codex</span>
+      <span class="proj" id="proj"></span>
+      <span class="state" id="agent-state">待命</span>
+      <span id="thinking" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="sp"></span>
+      <select id="project-select" title="当前项目 / 切换项目"></select>
+      <button class="ibtn" id="new-project" title="新建写作项目">＋</button>
+      <button class="ibtn accent" id="pull" title="拉取：Overleaf → 本地 (覆盖前自动备份)">⬇</button>
+      <button class="ibtn accent" id="push" title="推送：本地 → Overleaf">⬆</button>
+      <button class="ibtn" id="restart" title="重启写作助手会话">⟳</button>
+      <button class="ibtn" id="gear" title="设置">⚙</button>
+      <button class="ibtn" id="close" title="收起">✕</button>
+    </div>
+    <div id="agent-guide">
+      <div class="guide-title">当前项目可以做什么</div>
+      <div class="guide-text">这里处理当前项目的写作任务。要切换项目或新建项目，请使用顶部项目栏。</div>
+      <div class="guide-actions">
+        <button class="guide-btn" id="guide-report" type="button">继续写报告<span>导入资料、填写要求、生成日语草稿</span></button>
+        <button class="guide-btn" id="guide-paper" type="button">写/改论文<span>润色、翻译、审稿、引文检查</span></button>
+        <button class="guide-btn" id="guide-settings" type="button">项目设置<span>模型、Overleaf、提示词和规则检查</span></button>
+      </div>
+    </div>
+    <div id="actions"></div>
+    <div id="module-panel"></div>
+    <div id="workspace">
+      <div id="term-wrap"><div id="term" style="height:100%"></div></div>
+      <div id="composer-shell">
+        <div id="composer-box">
+          <textarea id="composer" rows="1" placeholder="给写作助手发消息" title="Enter 发送；Shift+Enter 换行"></textarea>
+          <button id="send" title="发送">➤</button>
+        </div>
+        <div id="control-row">
+          <div>
+            <button class="keybtn" data-raw="ctrl-c" title="停止当前助手任务">停止</button>
+            <button class="keybtn" data-raw="clear" title="清空输出面板">清屏</button>
+            <button class="keybtn" data-raw="submit" title="发送当前输入">提交</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+
+  <div id="action-mask">
+    <div id="action-dialog" role="dialog" aria-modal="true" aria-labelledby="action-title">
+      <h3 id="action-title">快捷动作</h3>
+      <p id="action-desc"></p>
+      <input id="action-arg" autocomplete="off">
+      <div class="row">
+        <button class="btn ghost" id="action-cancel" type="button">取消</button>
+        <button class="btn primary" id="action-submit" type="button">运行</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="project-mask">
+    <div id="project-dialog" role="dialog" aria-modal="true" aria-labelledby="project-title">
+      <h3 id="project-title">新建写作项目</h3>
+      <p id="wizard-desc">先选你要完成的任务类型。助手会自动创建 Overleaf 项目，并根据报告或论文准备后续界面。</p>
+      <div class="wizard-progress">
+        <span id="wizard-progress-1">1. 选择用途</span>
+        <span id="wizard-progress-2">2. 项目名称</span>
+        <span id="wizard-progress-3">3. 开始方式</span>
+      </div>
+      <section class="wizard-step" id="wizard-step-1">
+        <div class="wizard-types">
+        <button class="wizard-type" id="wizard-kind-report" type="button" data-kind="report">课程报告<span>自动创建 Overleaf；适合日语レポート：上传课件、讲义、要求，填写题目后生成草稿。</span></button>
+          <button class="wizard-type" id="wizard-kind-paper" type="button" data-kind="paper">论文项目<span>适合 LaTeX / Overleaf 论文：润色、翻译、审稿、引文检查和编译。</span></button>
+        </div>
+      </section>
+      <section class="wizard-step" id="wizard-step-2">
+        <label>项目名</label>
+        <input id="wizard-label" placeholder="例如 量子信息课程报告">
+        <div class="wizard-note">项目名会显示在右上角项目列表里。以后可以随时切换回来。</div>
+      </section>
+      <section class="wizard-step" id="wizard-step-3">
+        <div id="wizard-overleaf-choice">
+          <label>已有 Overleaf 项目？</label>
+          <select id="wizard-overleaf-mode">
+            <option value="create">自动创建新的 Overleaf 项目</option>
+            <option value="existing">绑定已有 Overleaf 项目</option>
+            <option value="local">只创建本地项目</option>
+          </select>
+          <div id="wizard-overleaf-row">
+            <label>已有 Overleaf 项目名</label>
+            <input id="wizard-overleaf" placeholder="例如 课程报告 2026">
+          </div>
+        </div>
+        <details class="wizard-advanced">
+          <summary>高级：本机保存位置</summary>
+          <label>保存位置</label>
+          <input id="wizard-paperdir" placeholder="./projects/量子信息课程报告">
+        </details>
+        <div class="wizard-note" id="wizard-note"></div>
+      </section>
+      <div class="wizard-actions">
+        <button class="btn ghost" id="wizard-back" type="button">上一步</button>
+        <button class="btn ghost" id="wizard-cancel" type="button">取消</button>
+        <button class="btn primary" id="wizard-next" type="button">下一步</button>
+        <button class="btn primary" id="wizard-create" type="button">创建并开始</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="mask">
+    <div id="modal">
+      <h3>设置</h3>
+      <p>这里管理项目、账号和模型。常用写作功能在右侧面板里使用；高级提示词只在需要微调助手行为时修改。</p>
+      <details>
+        <summary>新建项目（推荐从“从这里开始”里创建）</summary>
+        <div class="threecol">
+          <div><label>新项目类型</label><select id="new-kind">
+            <option value="paper">论文项目</option>
+            <option value="report">课程报告</option>
+          </select></div>
+          <div><label>新项目名</label><input id="new-label" placeholder="例如 My Paper"></div>
+          <div><label>新项目目录</label><input id="new-paperdir" placeholder="/path/to/project"></div>
+        </div>
+        <div class="twocol">
+          <div><label>Overleaf 项目名</label><input id="new-overleaf" placeholder="仅论文项目需要"></div>
+          <div><label>&nbsp;</label><button class="btn primary block" id="create-project">新建并切换</button></div>
+        </div>
+      </details>
+      <hr>
+      <div class="twocol">
+        <div><label>Overleaf 邮箱</label><input id="cfg-email" type="email"></div>
+        <div><label>Overleaf 密码 <span id="pw-hint"></span></label><input id="cfg-pw" type="password" placeholder="留空则不修改"></div>
+      </div>
+      <div class="twocol">
+        <div><label>项目显示名</label><input id="cfg-label"></div>
+        <div><label>Overleaf 项目名</label><input id="cfg-proj" placeholder="未绑定则留空"></div>
+      </div>
+      <label>可用功能</label><input id="cfg-modules" readonly>
+      <label>本地目录</label><input id="cfg-paperdir">
+      <label>推送路径 (每行一个)</label><textarea id="cfg-pushpaths" class="mono" rows="4"></textarea>
+      <div class="twocol">
+        <div><label>助手类型</label><select id="cfg-agent-provider"></select></div>
+        <label class="checkline"><input id="cfg-audit" type="checkbox"> 修改后自动检查规则</label>
+      </div>
+      <label>可用模型（自动获取）</label>
+      <div class="inline">
+        <select id="cfg-agent-model"></select>
+        <button class="btn ghost" id="cfg-refresh-models" type="button">刷新模型</button>
+        <input id="cfg-agent-model-custom" class="model-custom" placeholder="手动填写模型名，例如 gpt-5.5">
+      </div>
+      <div class="hintline" id="cfg-model-status"></div>
+      <div id="api-agent-panel" class="agent-detail">
+        <div class="twocol">
+          <div><label>API Base URL</label><input id="cfg-api-base" placeholder="http://localhost:8000/v1"></div>
+          <div><label>API Key 环境变量</label><input id="cfg-api-key-env" placeholder="OPENAI_API_KEY"></div>
+        </div>
+      </div>
+      <div id="custom-agent-panel" class="agent-detail">
+        <label>自定义命令路径</label><input id="cfg-custom-cmd" placeholder="/path/to/agent">
+        <label>自定义命令参数</label><input id="cfg-custom-args" placeholder="--cwd {{cwd}} --prompt-file {{promptFile}}">
+        <label>提示词传入方式</label><select id="cfg-custom-mode">
+          <option value="stdin">stdin</option>
+          <option value="arg">arg</option>
+          <option value="file">file</option>
+        </select>
+      </div>
+      <details id="agent-advanced-panel">
+        <summary>高级命令配置</summary>
+        <div class="twocol">
+          <div><label>Codex 命令</label><input id="cfg-codex" placeholder="codex"></div>
+          <div><label>Claude Code 命令</label><input id="cfg-claude-cmd" placeholder="claude"></div>
+        </div>
+        <label>Claude 权限模式</label><input id="cfg-claude-perm" placeholder="bypassPermissions">
+      </details>
+      <hr>
+      <label>助手提示词模板</label><select id="cfg-prompt-kind"></select>
+      <textarea id="cfg-prompt-body" class="mono" rows="8" spellcheck="false"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn ghost" id="cfg-prompt-reset">恢复当前模板默认</button>
+      </div>
+      <div class="row">
+        <button class="btn ghost" id="delete-project">删除当前项目</button>
+        <button class="btn ghost" id="cfg-cancel">取消</button>
+        <button class="btn primary" id="cfg-save">保存</button>
+      </div>
+    </div>
+  </div>
+
+<script src="/__agent/vendor/xterm/lib/xterm.js"></script>
+<script src="/__agent/vendor/addon-fit/lib/addon-fit.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let focusGuardTimer = null;
+let appConfig = null;
+let projects = [];
+let flowDefs = [];
+let skillTemplates = {};
+let promptDrafts = {};
+let skillDrafts = {};
+let loadedProjectId = '';
+let actionArgResolver = null;
+let drawerMode = 'agent';
+let jstyleLastResult = '等待操作。';
+let jstyleLastResultKind = '';
+let agentToken = '';
+let sessionPromise = null;
+const paperPromptSet = ['brainstorm', 'polish', 'translate', 'review', 'citecheck', 'compile', 'ruleAudit'];
+const paperPushPaths = ['main.tex', 'references.bib', 'figures'];
+const reportPushPaths = ['main.tex', 'references.bib', 'figures'];
+const jstyleFlowIds = new Set(['jstyleStatus', 'jstyleMaterial', 'jstyleGenerate', 'jstyleIndex', 'jstyleGuard']);
+const materialLabelMap = {
+  report_template: '作业要求 / 评分标准',
+  course_slide: '课堂 PPT',
+  lecture_note: '讲义 / 课堂笔记',
+  course_handout: '作业说明 / 课程资料',
+  book: '教材 / 书籍',
+  academic_paper: '学术论文 / 先行研究',
+  public_report: '公开报告 / 白皮书',
+  user_note: '我的观点 / 笔记',
+};
+const taskLabelMap = {
+  report: '课程报告',
+  literature_review: '文献综述',
+  research_proposal: '研究计划书',
+};
+const fallbackMaterialTypes = [
+  { id: 'report_template', label: materialLabelMap.report_template, description: '老师给的格式、评分标准、模板。只用于结构，不当作事实来源。' },
+  { id: 'course_slide', label: materialLabelMap.course_slide, description: '课堂 PPT、课件，用来理解课程重点。' },
+  { id: 'lecture_note', label: materialLabelMap.lecture_note, description: '讲义、课堂笔记、板书整理。' },
+  { id: 'course_handout', label: materialLabelMap.course_handout, description: '作业说明、课程资料、老师发的要求。' },
+  { id: 'book', label: materialLabelMap.book, description: '教材和书籍，用来解释概念和理论。' },
+  { id: 'academic_paper', label: materialLabelMap.academic_paper, description: '论文、先行研究、引用依据。' },
+  { id: 'public_report', label: materialLabelMap.public_report, description: '政府/机构报告、白皮书、统计背景。' },
+  { id: 'user_note', label: materialLabelMap.user_note, description: '你的草稿、想法、要点、已有论文内容。' },
+];
+const fallbackTaskPresets = [
+  { id: 'report', label: taskLabelMap.report, default_word_count: 1600 },
+  { id: 'literature_review', label: taskLabelMap.literature_review, default_word_count: 2200 },
+  { id: 'research_proposal', label: taskLabelMap.research_proposal, default_word_count: 1800 },
+];
+let moduleStatusCache = null;
+let selectedJstyleFiles = [];
+let wizardKind = '';
+let wizardStep = 1;
+
+function toast(msg, err = false, ms = 4500) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (err ? ' err' : '');
+  el.textContent = msg;
+  $('toasts').appendChild(el);
+  setTimeout(() => el.remove(), ms);
+}
+function setAgentState(text, live = false) {
+  $('agent-state').textContent = text;
+  $('agent-state').classList.toggle('live', live);
+  document.body.classList.toggle('agent-running', live);
+  $('send')?.classList.toggle('busy', live);
+  $('send')?.setAttribute('aria-busy', live ? 'true' : 'false');
+}
+function currentAgent() {
+  const p = appConfig?.project || {};
+  const id = p.agentProvider || 'codex';
+  return { id, ...(appConfig?.agents?.[id] || {}) };
+}
+function agentLabel() {
+  const agent = currentAgent();
+  return agent.label || agent.id || '写作助手';
+}
+function drawerTitle() {
+  return drawerMode === 'jstyle' ? '日语报告助手' : agentLabel();
+}
+function applyDrawerMode(mode = drawerMode) {
+  drawerMode = mode === 'jstyle' ? 'jstyle' : 'agent';
+  document.body.classList.toggle('mode-agent', drawerMode === 'agent');
+  document.body.classList.toggle('mode-jstyle', drawerMode === 'jstyle');
+  $('agent-name').textContent = drawerTitle();
+  $('proj').textContent = '· ' + (appConfig?.project?.label || appConfig?.projectName || '');
+  $('composer').placeholder = drawerMode === 'agent' ? '给写作助手发消息' : '日语报告助手正在打开';
+  renderModulePanel();
+  refitTerm();
+}
+function updateFabVisibility() {
+  $('fab-jstyle')?.classList.toggle('hidden', !jstyleEnabled());
+}
+function selectedProviderId() {
+  return $('cfg-agent-provider')?.value || appConfig?.project?.agentProvider || 'codex';
+}
+function currentModelValue() {
+  const selected = $('cfg-agent-model')?.value || '';
+  if (selected === '__custom__') return $('cfg-agent-model-custom')?.value.trim() || '';
+  return selected.trim();
+}
+function collectAgentFormConfig() {
+  const existing = appConfig?.agents || {};
+  const provider = selectedProviderId();
+  const model = currentModelValue();
+  const modelFor = (id) => (provider === id ? model : (existing[id]?.model || ''));
+  return {
+    codex: {
+      ...(existing.codex || {}),
+      id: 'codex',
+      type: 'codex',
+      label: 'Codex',
+      command: $('cfg-codex')?.value || existing.codex?.command || 'codex',
+      model: modelFor('codex'),
+    },
+    claude: {
+      ...(existing.claude || {}),
+      id: 'claude',
+      type: 'claude-code',
+      label: 'Claude Code',
+      command: $('cfg-claude-cmd')?.value || existing.claude?.command || 'claude',
+      model: modelFor('claude'),
+      permissionMode: $('cfg-claude-perm')?.value || existing.claude?.permissionMode || 'bypassPermissions',
+    },
+    api: {
+      ...(existing.api || {}),
+      id: 'api',
+      type: 'openai-compatible',
+      label: 'API 助手',
+      baseUrl: $('cfg-api-base')?.value || existing.api?.baseUrl || 'http://localhost:8000/v1',
+      model: modelFor('api'),
+      apiKeyEnv: $('cfg-api-key-env')?.value || existing.api?.apiKeyEnv || 'OPENAI_API_KEY',
+    },
+    custom: {
+      ...(existing.custom || {}),
+      id: 'custom',
+      type: 'custom-cli',
+      label: '自定义命令',
+      command: $('cfg-custom-cmd')?.value || existing.custom?.command || '',
+      args: $('cfg-custom-args')?.value || existing.custom?.args || '',
+      promptMode: $('cfg-custom-mode')?.value || existing.custom?.promptMode || 'stdin',
+      model: modelFor('custom'),
+    },
+  };
+}
+function syncCustomModelInput() {
+  const custom = $('cfg-agent-model-custom');
+  const show = $('cfg-agent-model')?.value === '__custom__';
+  custom.classList.toggle('show', show);
+}
+function setModelOptions(models = [], selectedModel = currentModelValue()) {
+  const select = $('cfg-agent-model');
+  const custom = $('cfg-agent-model-custom');
+  select.innerHTML = '';
+  const blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = '使用该助手默认模型';
+  select.appendChild(blank);
+  for (const model of models) {
+    const opt = document.createElement('option');
+    opt.value = model;
+    opt.textContent = model;
+    select.appendChild(opt);
+  }
+  const customOpt = document.createElement('option');
+  customOpt.value = '__custom__';
+  customOpt.textContent = '手动填写...';
+  select.appendChild(customOpt);
+
+  if (selectedModel && models.includes(selectedModel)) {
+    select.value = selectedModel;
+    custom.value = '';
+  } else if (selectedModel) {
+    select.value = '__custom__';
+    custom.value = selectedModel;
+  } else {
+    select.value = '';
+    custom.value = '';
+  }
+  syncCustomModelInput();
+}
+async function refreshModelOptions(showToast = false) {
+  const provider = selectedProviderId();
+  const current = currentModelValue();
+  $('cfg-model-status').textContent = '正在获取可用模型...';
+  try {
+    const r = await api('agents/models', { provider, agents: collectAgentFormConfig() });
+    if (!r.ok) throw new Error(r.error || '获取失败');
+    const models = r.models || [];
+    setModelOptions(models, current || (provider === 'api' && models.length ? models[0] : ''));
+    const count = (r.models || []).length;
+    $('cfg-model-status').textContent = count
+      ? `已获取 ${count} 个模型 · ${r.source || provider}`
+      : `没有自动获取到模型，可手动填写 · ${r.source || provider}`;
+    if (r.warning) $('cfg-model-status').textContent += ' · ' + r.warning.split('\n')[0];
+    if (showToast) toast(count ? `已获取 ${count} 个模型` : '未获取到模型，可手动填写');
+  } catch (e) {
+    setModelOptions([], current);
+    $('cfg-model-status').textContent = '无法自动获取模型，可手动填写：' + String(e.message || e);
+    if (showToast) toast('获取模型失败: ' + String(e.message || e), true, 8000);
+  }
+}
+function syncAgentPanels(resetModel = true) {
+  const provider = selectedProviderId();
+  const agents = appConfig?.agents || {};
+  if (resetModel) setModelOptions([], agents[provider]?.model || '');
+  $('api-agent-panel').classList.toggle('show', provider === 'api');
+  $('custom-agent-panel').classList.toggle('show', provider === 'custom');
+  $('cfg-model-status').textContent = '';
+}
+
+function tokenInvalid(status, json) {
+  return status === 403 && /令牌|token/i.test(String(json?.error || ''));
+}
+async function initSession(force = false) {
+  if (agentToken && !force) return agentToken;
+  if (sessionPromise && !force) return sessionPromise;
+  sessionPromise = (async () => {
+    const res = await fetch('/__agent/api/session', { cache: 'no-store' });
+    const json = await res.json();
+    if (!json.ok || !json.token) throw new Error(json.error || '无法获取 Paper Agent 本机访问令牌');
+    agentToken = json.token;
+    return agentToken;
+  })();
+  try {
+    return await sessionPromise;
+  } finally {
+    sessionPromise = null;
+  }
+}
+async function apiFetchJson(p, options = {}, retry = true) {
+  await initSession(false);
+  const headers = { ...(options.headers || {}), ...(agentToken ? { 'x-paper-agent-token': agentToken } : {}) };
+  const res = await fetch('/__agent/api/' + p, { ...options, headers });
+  let json;
+  try {
+    json = await res.json();
+  } catch {
+    json = { ok: false, error: `请求失败 HTTP ${res.status}` };
+  }
+  if (tokenInvalid(res.status, json) && retry) {
+    await initSession(true);
+    if (ws?.readyState !== 1) connect(false);
+    return apiFetchJson(p, options, false);
+  }
+  return json;
+}
+async function api(p, body) {
+  const payload = body && typeof body === 'object' && !(body instanceof FormData)
+    ? { ...(needsProjectContext(p) && appConfig?.project?.id && !body.projectId ? { projectId: appConfig.project.id } : {}), ...body }
+    : body;
+  return apiFetchJson(p, {
+    method: body !== undefined ? 'POST' : 'GET',
+    headers: { 'content-type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(payload) : undefined,
+  });
+}
+function needsProjectContext(p) {
+  return /^(prompts|pull|push|jstyle|project\/create-overleaf)/.test(String(p || ''));
+}
+function actionDialogOpen() {
+  return $('action-mask')?.classList.contains('show');
+}
+function closeActionDialog(value = null) {
+  $('action-mask').classList.remove('show');
+  const resolve = actionArgResolver;
+  actionArgResolver = null;
+  if (resolve) resolve(value);
+}
+function askActionArg(flow, fillOnly = false) {
+  return new Promise((resolve) => {
+    actionArgResolver = resolve;
+    $('action-title').textContent = flow.title || flow.label || '快捷动作';
+    $('action-desc').textContent = flow.argLabel || '请输入参数';
+    $('action-arg').value = flow.defaultArg || '';
+    $('action-submit').textContent = fillOnly ? '填入' : '运行';
+    $('action-mask').classList.add('show');
+    clearInterval(focusGuardTimer);
+    setTimeout(() => {
+      $('action-arg').focus({ preventScroll: true });
+      $('action-arg').select();
+    }, 20);
+  });
+}
+$('action-cancel').addEventListener('click', () => closeActionDialog(null));
+$('action-submit').addEventListener('click', () => closeActionDialog($('action-arg').value));
+$('action-mask').addEventListener('click', (e) => {
+  if (e.target === $('action-mask')) closeActionDialog(null);
+});
+$('action-arg').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.isComposing) {
+    e.preventDefault();
+    closeActionDialog($('action-arg').value);
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeActionDialog(null);
+  }
+});
+
+/* ---------- 抽屉开关 ---------- */
+const setOpen = (v, mode = drawerMode) => {
+  if (v) applyDrawerMode(mode);
+  document.body.classList.toggle('open', v);
+  if (v) {
+    $('fab-agent').classList.remove('unread');
+    setTimeout(() => {
+      refitTerm();
+      if (drawerMode === 'agent') holdComposerFocus(1800);
+    }, 280);
+  }
+};
+$('fab-agent').onclick = () => setOpen(true, 'agent');
+$('fab-jstyle').onclick = () => {
+  if (!jstyleEnabled()) return toast('当前项目没有启用日语报告助手', true);
+  setOpen(true, 'jstyle');
+};
+$('guide-report').addEventListener('click', () => {
+  if (!jstyleEnabled()) return toast('当前项目没有启用日语报告助手；请新建“课程报告”项目或在设置里启用。', true, 8000);
+  setOpen(true, 'jstyle');
+  toast('按 1、2、3 的顺序操作：先导入资料，再填写要求，最后生成并检查。');
+});
+$('guide-paper').addEventListener('click', () => {
+  setOpen(true, 'agent');
+  toast('选择“润色 / 翻译 / 审稿 / 引文 / 编译”等快捷动作，或直接在输入框写任务。');
+});
+$('guide-settings').addEventListener('click', () => $('mask').classList.add('show'));
+$('close').onclick = () => { clearInterval(focusGuardTimer); setOpen(false); };
+$('ol').addEventListener('load', () => {
+  if (document.body.classList.contains('open') && !$('mask').classList.contains('show') && !$('project-mask').classList.contains('show')) {
+    setTimeout(() => holdComposerFocus(1400), 40);
+  }
+});
+document.addEventListener('focusin', (e) => {
+  if (e.target === $('ol') && document.body.classList.contains('open') && !$('project-mask').classList.contains('show')) {
+    setTimeout(() => holdComposerFocus(500), 0);
+  }
+});
+
+/* ---------- 抽屉拖宽 ---------- */
+$('grip').addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  const move = (ev) => {
+    const w = Math.min(Math.max(window.innerWidth - ev.clientX, 380), window.innerWidth * 0.82);
+    document.documentElement.style.setProperty('--drawer-w', w + 'px');
+    $('ol').style.pointerEvents = 'none';
+    refitTerm();
+  };
+  const up = () => { $('ol').style.pointerEvents = ''; removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+  addEventListener('pointermove', move);
+  addEventListener('pointerup', up);
+});
+
+/* ---------- 终端 ---------- */
+const term = new Terminal({
+  fontFamily: '"JetBrains Mono", "Cascadia Code", "Noto Sans Mono CJK SC", monospace',
+  fontSize: 13, scrollback: 10000, cursorBlink: false, disableStdin: true,
+  convertEol: true,
+  theme: { background: '#1d2026', foreground: '#e8eaed', cursor: '#4f9f8f',
+           selectionBackground: 'rgba(79,159,143,.35)' },
+});
+const fit = new FitAddon.FitAddon();
+term.loadAddon(fit);
+term.open($('term'));
+fit.fit();
+
+let ws;
+let reconnectTimer = null;
+async function connect(forceSession = false) {
+  clearTimeout(reconnectTimer);
+  try {
+    await initSession(forceSession);
+  } catch (e) {
+    $('conn').classList.add('down');
+    setAgentState('断开');
+    $('send').disabled = true;
+    reconnectTimer = setTimeout(() => connect(true), 3000);
+    return;
+  }
+  if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+  ws = new WebSocket(`ws://${location.host}/__agent/pty?token=${encodeURIComponent(agentToken)}`);
+  ws.onopen = () => {
+    $('conn').classList.remove('down');
+    setAgentState('待命');
+    term.reset();
+    refitTerm();
+    $('send').disabled = false;
+    if (document.body.classList.contains('open')) focusComposer();
+  };
+  ws.onmessage = (e) => {
+    const text = String(e.data);
+    term.write(e.data);
+    if (/已提交给|正在处理|已有助手任务/.test(text)) setAgentState('思考中', true);
+    else if ($('agent-state').textContent === '思考中') setAgentState('输出中', true);
+    if (text.includes('结束')) setAgentState('待命');
+    if (!document.body.classList.contains('open')) $('fab-agent').classList.add('unread');
+  };
+  ws.onclose = () => {
+    $('conn').classList.add('down');
+    setAgentState('断开');
+    $('send').disabled = true;
+    reconnectTimer = setTimeout(() => connect(true), 3000);
+  };
+}
+function sendSize() { if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'r', cols: term.cols, rows: term.rows })); }
+function refitTerm() {
+  fit.fit();
+  sendSize();
+}
+new ResizeObserver(() => refitTerm()).observe($('term'));
+
+/* ---------- 前台输入框 ---------- */
+let composing = false;
+function sendPromptToRunner(d) {
+  if (ws?.readyState !== 1) {
+    toast('写作助手还没连接，请稍后再试', true);
+    return false;
+  }
+  ws.send(JSON.stringify({ t: 'prompt', d, projectId: appConfig?.project?.id || '' }));
+  return true;
+}
+function terminalBlock(title, body, color = '36') {
+  const text = String(body || '').replace(/\r?\n/g, '\r\n');
+  term.write(`\r\n\x1b[${color}m${title}\x1b[0m\r\n${text}\r\n`);
+  refitTerm();
+  if (!document.body.classList.contains('open')) $('fab-agent').classList.add('unread');
+}
+function jstyleResultBlock(title, body, color = '36') {
+  const el = $('jstyle-result');
+  const text = `${title}\n${String(body || '')}`.trim();
+  jstyleLastResult = text || title;
+  jstyleLastResultKind = color === '31' ? 'err' : (color === '32' ? 'ok' : '');
+  if (!el) {
+    terminalBlock(title, body, color);
+    return;
+  }
+  el.textContent = jstyleLastResult;
+  el.classList.toggle('err', jstyleLastResultKind === 'err');
+  el.classList.toggle('ok', jstyleLastResultKind === 'ok');
+}
+function summarizeJstyleGenerate(result) {
+  const lines = [];
+  if (result.output_file) lines.push(`已保存草稿: ${result.output_file}`);
+  if (result.persisted?.latestDraftMarkdown) lines.push(`项目内草稿: ${result.persisted.latestDraftMarkdown}`);
+  if (result.outline) lines.push(`\n提纲:\n${result.outline}`);
+  if (result.draft) lines.push(`\n草稿:\n${result.draft}`);
+  const citation = result.citation_warnings || [];
+  const similarity = result.similarity_warnings || [];
+  lines.push(`\n缺少来源说明: ${citation.length}`);
+  lines.push(`可能和资料原文太像的地方: ${similarity.length}`);
+  if (citation.length || similarity.length) lines.push('建议点击“检查草稿”查看需要修改的地方。');
+  return lines.join('\n');
+}
+function summarizeJstyleIndex(result) {
+  return [
+    `已读取资料: ${(result.source_files || []).length} 份`,
+    `可检索片段: ${result.source_chunks ?? 0} 条`,
+    `检索记录: ${result.source_index_count ?? 0} 条`,
+  ].join('\n');
+}
+function summarizeJstyleGuard(result) {
+  const checks = Array.isArray(result?.checks) ? result.checks : [];
+  const failed = checks.filter((item) => item && item.passed === false);
+  const warningCount = checks.reduce((sum, item) => sum + (Array.isArray(item?.warnings) ? item.warnings.length : 0), 0);
+  return [
+    `检查完成：${result?.passed ? '可以继续使用' : '需要修改'}`,
+    `需要关注的检查项：${failed.length}`,
+    `缺少来源说明或重复风险：${warningCount}`,
+    result?.passed ? '建议：再人工通读一遍语气和格式。' : '建议：先补来源说明，再改写可能和资料原文太像的段落。',
+  ].join('\n');
+}
+function summarizeJstyleStatus(result) {
+  const materials = (result.materials || []).map((m) => `${materialLabel(m)}: ${m.count} 份`).join('\n');
+  const tasks = (result.task_presets || []).map((t) => `${taskLabel(t)}: 默认 ${t.default_word_count || 1600} 字`).join('\n');
+  return [
+    `项目内资料库: ${result.display?.projectRootData || result.project_root || ''}`,
+    result.persisted?.latestDraftMarkdown ? `最近草稿备份: ${result.persisted.latestDraftMarkdown}` : '',
+    `准备状态: ${result.runtime?.python ? '已准备好' : '需要准备'}`,
+    '',
+    '已导入资料:',
+    materials || '还没有导入资料',
+    '',
+    '可选任务:',
+    tasks || '暂无任务模板',
+    '',
+    `最近生成草稿: ${(result.outputs || []).length} 个`,
+  ].join('\n');
+}
+function summarizeJstyleImport(result) {
+  return [
+    `资料类型: ${materialLabel(result.material_type)}`,
+    `已保存到: ${result.source_file || ''}`,
+    `标题: ${result.metadata?.title || '(未填写)'}`,
+  ].join('\n');
+}
+function parseCsvList(text) {
+  return String(text || '').split(/[\n;,，；]+/).map((x) => x.trim()).filter(Boolean);
+}
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+function activeModules() {
+  return appConfig?.project?.modules || [];
+}
+function hasActiveModule(id) {
+  return activeModules().includes(id);
+}
+function jstyleEnabled() {
+  return hasActiveModule('japanese-style-rag') || appConfig?.project?.rag?.enabled;
+}
+function jstyleMaterialRows(status = moduleStatusCache) {
+  if (Array.isArray(status?.materials) && status.materials.length) return status.materials;
+  return fallbackMaterialTypes.map((item) => ({ ...item, count: 0, files: [] }));
+}
+function jstyleMaterialTypes(status = moduleStatusCache) {
+  if (Array.isArray(status?.material_types) && status.material_types.length) return status.material_types;
+  return fallbackMaterialTypes;
+}
+function jstyleTaskPresets(status = moduleStatusCache) {
+  if (Array.isArray(status?.task_presets) && status.task_presets.length) return status.task_presets;
+  return fallbackTaskPresets;
+}
+function materialLabel(item) {
+  const id = typeof item === 'string' ? item : item?.id;
+  return materialLabelMap[id] || item?.label || id || '';
+}
+function taskLabel(item) {
+  const id = typeof item === 'string' ? item : item?.id;
+  return taskLabelMap[id] || item?.label || id || '';
+}
+function optionHtml(rows, selected, labelField = 'label') {
+  return rows.map((row) => {
+    const id = row.id || row.value || '';
+    const label = row.id && materialLabelMap[row.id] ? materialLabel(row) : (row.id && taskLabelMap[row.id] ? taskLabel(row) : (row[labelField] || row.label || id));
+    return `<option value="${escapeHtml(id)}"${id === selected ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+  }).join('');
+}
+function currentJstyleDraft() {
+  return {
+    sourcePath: $('jstyle-source-path')?.value || '',
+    materialType: $('jstyle-material-type')?.value || 'course_slide',
+    title: $('jstyle-title')?.value || '',
+    publisher: $('jstyle-publisher')?.value || '',
+    publishedDate: $('jstyle-date')?.value || '',
+    sourceUrl: $('jstyle-url')?.value || '',
+    taskType: $('jstyle-task-type')?.value || 'report',
+    topic: $('jstyle-topic')?.value || 'SNSが若者のコミュニケーションに与える影響',
+    wordCount: $('jstyle-word-count')?.value || '',
+    discipline: $('jstyle-discipline')?.value || '',
+    courseName: $('jstyle-course')?.value || '',
+    requirements: $('jstyle-requirements')?.value || '',
+    userPoints: $('jstyle-points')?.value || '',
+  };
+}
+function setModuleButtonBusy(id, on, text = '运行中...') {
+  const btn = $(id);
+  if (!btn) return;
+  if (on) {
+    btn.dataset.label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = text;
+  } else {
+    btn.disabled = false;
+    btn.textContent = btn.dataset.label || btn.textContent;
+  }
+}
+function defaultWordCountForTask(taskId) {
+  const task = jstyleTaskPresets().find((item) => item.id === taskId);
+  return task?.default_word_count || task?.defaultWordCount || 1600;
+}
+function setSelectedJstyleFiles(fileList) {
+  selectedJstyleFiles = Array.from(fileList || []);
+  const summary = $('jstyle-file-summary');
+  if (!summary) return;
+  if (!selectedJstyleFiles.length) {
+    summary.textContent = '还没有选择文件。';
+    return;
+  }
+  const shown = selectedJstyleFiles.slice(0, 3).map((file) => file.webkitRelativePath || file.name).join('、');
+  summary.textContent = `已选择 ${selectedJstyleFiles.length} 个文件：${shown}${selectedJstyleFiles.length > 3 ? ' 等' : ''}`;
+}
+async function uploadSelectedJstyleFiles() {
+  if (!selectedJstyleFiles.length) return toast('请先选择文件或文件夹', true);
+  const fd = new FormData();
+  fd.append('projectId', appConfig?.project?.id || '');
+  fd.append('materialType', $('jstyle-material-type')?.value || 'user_note');
+  fd.append('title', $('jstyle-title')?.value.trim() || '');
+  fd.append('publisher', $('jstyle-publisher')?.value.trim() || '');
+  fd.append('publishedDate', $('jstyle-date')?.value.trim() || '');
+  fd.append('sourceUrl', $('jstyle-url')?.value.trim() || '');
+  for (const file of selectedJstyleFiles) {
+    fd.append('files', file, file.webkitRelativePath || file.name);
+  }
+  setModuleButtonBusy('jstyle-upload-selected', true, '导入中...');
+  setAgentState('资料导入中', true);
+  jstyleResultBlock('正在导入资料', `已选择 ${selectedJstyleFiles.length} 个文件\n类型：${materialLabel($('jstyle-material-type')?.value || 'user_note')}`, '35');
+  try {
+    const r = await apiFetchJson('jstyle/materials/upload', {
+      method: 'POST',
+      body: fd,
+    });
+    if (!r.ok) throw new Error(r.error || '资料导入失败');
+    jstyleResultBlock('资料导入完成', `已导入 ${r.count || 0} 个文件。\n下一步：点击“读取资料”，让助手读取这些资料。`, '32');
+    selectedJstyleFiles = [];
+    await refreshJstyleStatus(false);
+  } catch (e) {
+    jstyleResultBlock('资料导入失败', String(e.message || e), '31');
+    toast('资料导入失败: ' + String(e.message || e), true, 8000);
+  } finally {
+    setModuleButtonBusy('jstyle-upload-selected', false);
+    setAgentState('待命');
+  }
+}
+function renderJstylePanel(status = moduleStatusCache) {
+  const box = $('module-panel');
+  const draft = currentJstyleDraft();
+  const materials = jstyleMaterialRows(status);
+  const materialTypes = jstyleMaterialTypes(status);
+  const taskPresets = jstyleTaskPresets(status);
+  const selectedTask = draft.taskType || taskPresets[0]?.id || 'report';
+  const selectedMaterial = draft.materialType || materialTypes[0]?.id || 'course_slide';
+  const materialList = materials.map((m) => `
+    <div class="module-rowline">
+      <strong title="${escapeHtml(m.description || '')}">${escapeHtml(materialLabel(m))}</strong>
+      <span class="module-count">${Number(m.count || 0)} 件</span>
+    </div>
+  `).join('');
+  const recentOutputs = (status?.outputs || []).slice(-3).map((item) => `
+    <div class="module-rowline"><strong>${escapeHtml(item)}</strong><span class="module-count">草稿</span></div>
+  `).join('');
+  const runtimeText = status?.runtime?.python ? '已准备好' : (status?.error ? '准备失败' : '准备中');
+  const embeddingText = status?.embedding
+    ? '只使用已导入资料'
+    : '只使用已导入资料';
+  const hostText = status?.display?.projectRoot || appConfig?.project?.label || '';
+  const dataText = status?.display?.projectRootData || status?.project_root || '';
+  const rootText = dataText
+    ? `当前项目：${appConfig?.project?.label || ''} · 资料库已固定`
+    : `当前项目：${appConfig?.project?.label || ''}`;
+  const errorHtml = status?.error ? `<div class="module-empty">${escapeHtml(status.error)}</div>` : '';
+  box.innerHTML = `
+    <div class="module-view" data-module="japanese-style-rag">
+      <div class="module-head">
+        <div>
+          <div class="module-title">日语报告助手</div>
+          <div class="module-subtitle">${escapeHtml(rootText || '当前项目')}</div>
+        </div>
+        <div class="module-badges">
+          <span class="module-pill">${escapeHtml(runtimeText)}</span>
+          <span class="module-pill">${escapeHtml(embeddingText)}</span>
+        </div>
+      </div>
+      <div class="module-steps">
+        <div class="module-step"><strong>1. 添加资料</strong>选择文件或文件夹，告诉助手这些资料是课件、论文还是你的笔记。</div>
+        <div class="module-step"><strong>2. 填写要求</strong>输入题目、字数、课程名、老师要求和你的观点。</div>
+        <div class="module-step"><strong>3. 生成后检查</strong>生成草稿后检查来源说明和原文重复风险，再决定是否使用。</div>
+      </div>
+      <div class="module-grid">
+        <section class="module-section wide">
+          <h4>1. 添加参考资料</h4>
+          <div class="module-field">
+            <label>资料用途</label>
+            <select id="jstyle-material-type">${optionHtml(materialTypes, selectedMaterial)}</select>
+          </div>
+          <div class="file-picker-row">
+            <button class="module-btn primary" id="jstyle-pick-files" type="button">选择文件</button>
+            <button class="module-btn" id="jstyle-pick-folder" type="button">选择文件夹</button>
+            <button class="module-btn" id="jstyle-upload-selected" type="button">导入选中的资料</button>
+          </div>
+          <input class="hidden-input" id="jstyle-file-input" type="file" multiple>
+          <input class="hidden-input" id="jstyle-folder-input" type="file" multiple webkitdirectory directory>
+          <div class="file-summary" id="jstyle-file-summary">${escapeHtml(selectedJstyleFiles.length ? `已选择 ${selectedJstyleFiles.length} 个文件` : '还没有选择文件。也可以展开下面的“从本机路径添加资料”。')}</div>
+          <details class="module-advanced">
+            <summary>从本机路径添加资料（高级）</summary>
+            <div class="module-form-row">
+              <div class="module-field">
+                <label>文件位置</label>
+                <input id="jstyle-source-path" placeholder="例如 main.tex 或 /path/to/slide.pdf" value="${escapeHtml(draft.sourcePath)}">
+              </div>
+              <div class="module-field">
+                <label>标题</label>
+                <input id="jstyle-title" placeholder="资料标题，可空" value="${escapeHtml(draft.title)}">
+              </div>
+            </div>
+            <div class="module-form-row">
+              <input id="jstyle-publisher" placeholder="出版者，可空" value="${escapeHtml(draft.publisher)}">
+              <input id="jstyle-date" placeholder="日期，可空" value="${escapeHtml(draft.publishedDate)}">
+            </div>
+            <div class="module-field">
+              <label>资料来源网址</label>
+              <input id="jstyle-url" placeholder="可选；例如老师提供的网址或论文页面" value="${escapeHtml(draft.sourceUrl)}">
+            </div>
+            <div class="module-actions">
+              <button class="module-btn" id="jstyle-import" type="button">按路径导入</button>
+            </div>
+          </details>
+        </section>
+        <section class="module-section wide">
+          <h4>2. 填写报告要求</h4>
+          <div class="module-form-row">
+            <div class="module-field">
+              <label>写作类型</label>
+              <select id="jstyle-task-type">${optionHtml(taskPresets, selectedTask)}</select>
+            </div>
+            <div class="module-field">
+              <label>题目</label>
+              <input id="jstyle-topic" value="${escapeHtml(draft.topic)}">
+            </div>
+          </div>
+          <div class="module-form-row">
+            <div class="module-field">
+              <label>大约字数</label>
+              <input id="jstyle-word-count" type="number" min="300" step="100" value="${escapeHtml(draft.wordCount || defaultWordCountForTask(selectedTask))}">
+            </div>
+            <div class="module-field">
+              <label>课程名 / 领域</label>
+              <div class="module-form-row">
+                <input id="jstyle-course" placeholder="课程名，可空" value="${escapeHtml(draft.courseName)}">
+                <input id="jstyle-discipline" placeholder="领域，可空，例如 社会学 / 情报学" value="${escapeHtml(draft.discipline)}">
+              </div>
+            </div>
+          </div>
+          <div class="module-field">
+            <label>老师要求</label>
+            <textarea id="jstyle-requirements" placeholder="写作要求、评分规则、格式要求等">${escapeHtml(draft.requirements)}</textarea>
+          </div>
+          <div class="module-field">
+            <label>你的观点 / 想写进去的要点</label>
+            <textarea id="jstyle-points" placeholder="每行一个，或用分号分隔">${escapeHtml(draft.userPoints)}</textarea>
+          </div>
+          <div class="module-actions">
+            <button class="module-btn primary" id="jstyle-generate" type="button">生成草稿</button>
+          </div>
+        </section>
+        <section class="module-section">
+          <h4>已导入资料</h4>
+          ${errorHtml || `<div class="module-list">${materialList || '<div class="module-empty">还没有导入资料。</div>'}</div>`}
+          <div class="module-actions">
+            <button class="module-btn" id="jstyle-refresh" type="button">刷新资料列表</button>
+            <button class="module-btn" id="jstyle-bootstrap" type="button">首次准备</button>
+          </div>
+          <details class="module-advanced">
+            <summary>高级信息</summary>
+            <div>项目目录：<code>${escapeHtml(hostText || '')}</code></div>
+            <div>资料保存：<code>${escapeHtml(dataText || '')}</code></div>
+          </details>
+        </section>
+        <section class="module-section">
+          <h4>读取与检查</h4>
+          <div class="module-list">
+            ${recentOutputs || '<div class="module-empty">还没有最近输出；生成草稿后会显示在这里。</div>'}
+          </div>
+          <div class="module-actions">
+            <button class="module-btn" id="jstyle-index" type="button">读取资料</button>
+            <button class="module-btn" id="jstyle-guard" type="button">检查草稿</button>
+          </div>
+        </section>
+        <section class="module-section wide">
+          <h4>处理结果</h4>
+          <pre id="jstyle-result" class="${escapeHtml(status?.error ? 'err' : jstyleLastResultKind)}">${escapeHtml(status?.error ? `助手读取失败\n${status.error}` : jstyleLastResult)}</pre>
+        </section>
+      </div>
+    </div>`;
+  $('jstyle-refresh')?.addEventListener('click', () => refreshJstyleStatus(true));
+  $('jstyle-bootstrap')?.addEventListener('click', bootstrapJstyleFromPanel);
+  $('jstyle-pick-files')?.addEventListener('click', () => $('jstyle-file-input')?.click());
+  $('jstyle-pick-folder')?.addEventListener('click', () => $('jstyle-folder-input')?.click());
+  $('jstyle-file-input')?.addEventListener('change', (e) => setSelectedJstyleFiles(e.target.files));
+  $('jstyle-folder-input')?.addEventListener('change', (e) => setSelectedJstyleFiles(e.target.files));
+  $('jstyle-upload-selected')?.addEventListener('click', uploadSelectedJstyleFiles);
+  $('jstyle-import')?.addEventListener('click', importJstyleFromPanel);
+  $('jstyle-generate')?.addEventListener('click', generateJstyleFromPanel);
+  $('jstyle-index')?.addEventListener('click', indexJstyleFromPanel);
+  $('jstyle-guard')?.addEventListener('click', guardJstyleFromPanel);
+  $('jstyle-task-type')?.addEventListener('change', () => {
+    const word = $('jstyle-word-count');
+    if (word) word.value = defaultWordCountForTask($('jstyle-task-type').value);
+  });
+}
+function renderModulePanel() {
+  const box = $('module-panel');
+  if (!box) return;
+  if (!jstyleEnabled()) {
+    moduleStatusCache = null;
+    box.classList.remove('show');
+    box.innerHTML = '';
+    refitTerm();
+    return;
+  }
+  if (drawerMode !== 'jstyle') {
+    box.classList.remove('show');
+    return;
+  }
+  box.classList.add('show');
+  renderJstylePanel(moduleStatusCache);
+  refitTerm();
+  if (!moduleStatusCache) refreshJstyleStatus(false);
+}
+async function refreshJstyleStatus(showTerminal = false) {
+  setAgentState('读取资料中', true);
+  try {
+    const r = await api('jstyle/status', {});
+    if (!r.ok) throw new Error(r.error || '状态读取失败');
+    moduleStatusCache = r.result;
+    renderJstylePanel(moduleStatusCache);
+    refitTerm();
+    if (showTerminal) jstyleResultBlock('日语报告助手状态', summarizeJstyleStatus(r.result), '32');
+    return r.result;
+  } catch (e) {
+    moduleStatusCache = { error: String(e.message || e) };
+    renderJstylePanel(moduleStatusCache);
+    if (showTerminal) jstyleResultBlock('日语报告助手读取失败', String(e.message || e), '31');
+    else toast('日语报告助手读取失败: ' + String(e.message || e), true, 8000);
+    return null;
+  } finally {
+    setAgentState('待命');
+  }
+}
+async function bootstrapJstyleFromPanel() {
+  setModuleButtonBusy('jstyle-bootstrap', true);
+  setAgentState('首次准备中', true);
+  try {
+    const r = await api('jstyle/bootstrap', { install: false });
+    if (!r.ok) throw new Error(r.error || '初始化失败');
+    moduleStatusCache = r.result?.status || moduleStatusCache;
+    renderJstylePanel(moduleStatusCache);
+    jstyleResultBlock('日语报告助手已准备好', '现在可以导入资料、读取资料并生成草稿。', '32');
+  } catch (e) {
+    jstyleResultBlock('日语报告助手准备失败', String(e.message || e), '31');
+    toast('日语报告助手准备失败: ' + String(e.message || e), true, 8000);
+  } finally {
+    setModuleButtonBusy('jstyle-bootstrap', false);
+    setAgentState('待命');
+    focusComposer();
+  }
+}
+async function importJstyleFromPanel() {
+  const payload = {
+    sourcePath: $('jstyle-source-path')?.value.trim() || '',
+    materialType: $('jstyle-material-type')?.value || 'user_note',
+    title: $('jstyle-title')?.value.trim() || '',
+    publisher: $('jstyle-publisher')?.value.trim() || '',
+    publishedDate: $('jstyle-date')?.value.trim() || '',
+    sourceUrl: $('jstyle-url')?.value.trim() || '',
+  };
+  if (!payload.sourcePath) return toast('请先填写资料文件路径', true);
+  setModuleButtonBusy('jstyle-import', true);
+  setAgentState('资料导入中', true);
+  jstyleResultBlock('正在导入资料', `路径：${payload.sourcePath}\n类型：${materialLabel(payload.materialType)}`, '35');
+  try {
+    const r = await api('jstyle/materials/import', payload);
+    if (!r.ok) throw new Error(r.error || '资料导入失败');
+    jstyleResultBlock('资料导入完成', summarizeJstyleImport(r.result), '32');
+    await refreshJstyleStatus(false);
+  } catch (e) {
+    jstyleResultBlock('资料导入失败', String(e.message || e), '31');
+    toast('资料导入失败: ' + String(e.message || e), true, 8000);
+  } finally {
+    setModuleButtonBusy('jstyle-import', false);
+    setAgentState('待命');
+    focusComposer();
+  }
+}
+async function generateJstyleFromPanel() {
+  const taskType = $('jstyle-task-type')?.value || 'report';
+  const task = jstyleTaskPresets().find((item) => item.id === taskType) || {};
+  const topic = $('jstyle-topic')?.value.trim() || '';
+  if (!topic) return toast('请填写日语草稿题目', true);
+  const materialCount = jstyleMaterialRows().reduce((sum, item) => sum + Number(item.count || 0), 0);
+  if (!materialCount) {
+    toast('还没有导入资料。建议先选择文件或文件夹导入作业要求、课件、讲义或你的笔记。', true, 9000);
+  }
+  const payload = {
+    topic,
+    wordCount: Number($('jstyle-word-count')?.value || task.default_word_count || 1600),
+    discipline: $('jstyle-discipline')?.value.trim() || 'general',
+    targetStyle: task.target_style || 'undergraduate_report',
+    taskType,
+    courseName: $('jstyle-course')?.value.trim() || '',
+    assignment: $('jstyle-requirements')?.value.trim() || '',
+    requirements: $('jstyle-requirements')?.value.trim() || '',
+    userPoints: parseCsvList($('jstyle-points')?.value || ''),
+  };
+  setModuleButtonBusy('jstyle-generate', true);
+  setAgentState('日语生成中', true);
+  jstyleResultBlock('正在生成草稿', `题目：${payload.topic}\n类型：${taskLabel(payload.taskType)}\n字数：${payload.wordCount}`, '35');
+  try {
+    const r = await api('jstyle/generate', payload);
+    if (!r.ok) throw new Error(r.error || '生成失败');
+    jstyleResultBlock('草稿生成完成', summarizeJstyleGenerate(r.result), '32');
+    await refreshJstyleStatus(false);
+  } catch (e) {
+    jstyleResultBlock('草稿生成失败', String(e.message || e), '31');
+    toast('生成失败: ' + String(e.message || e), true, 9000);
+  } finally {
+    setModuleButtonBusy('jstyle-generate', false);
+    setAgentState('待命');
+    focusComposer();
+  }
+}
+async function indexJstyleFromPanel() {
+  setModuleButtonBusy('jstyle-index', true);
+  setAgentState('读取资料中', true);
+  jstyleResultBlock('正在读取资料', '助手正在读取已导入资料，之后生成草稿时只使用这些资料。', '35');
+  try {
+    const r = await api('jstyle/index', {});
+    if (!r.ok) throw new Error(r.error || '资料整理失败');
+    jstyleResultBlock('资料读取完成', summarizeJstyleIndex(r.result), '32');
+    moduleStatusCache = r.result?.module || moduleStatusCache;
+    renderJstylePanel(moduleStatusCache);
+  } catch (e) {
+    jstyleResultBlock('资料读取失败', String(e.message || e), '31');
+    toast('资料读取失败: ' + String(e.message || e), true, 9000);
+  } finally {
+    setModuleButtonBusy('jstyle-index', false);
+    setAgentState('待命');
+    focusComposer();
+  }
+}
+async function guardJstyleFromPanel() {
+  setModuleButtonBusy('jstyle-guard', true);
+  setAgentState('检查草稿中', true);
+  jstyleResultBlock('正在检查草稿', '助手正在检查最近草稿的来源说明和原文重复风险。', '35');
+  try {
+    const r = await api('jstyle/guard', {});
+    if (!r.ok) throw new Error(r.error || '草稿检查失败');
+    jstyleResultBlock('草稿检查完成', summarizeJstyleGuard(r.result), r.result?.passed ? '32' : '31');
+  } catch (e) {
+    jstyleResultBlock('草稿检查失败', String(e.message || e), '31');
+    toast('草稿检查失败: ' + String(e.message || e), true, 9000);
+  } finally {
+    setModuleButtonBusy('jstyle-guard', false);
+    setAgentState('待命');
+    focusComposer();
+  }
+}
+async function runJstyleAction(flow, arg) {
+  setOpen(true, 'jstyle');
+  setAgentState('处理中', true);
+  jstyleResultBlock(`日语报告助手 · ${flow.label}`, '正在处理...', '35');
+  try {
+    let r;
+    if (flow.id === 'jstyleGenerate') {
+      throw new Error('日语生成请在右侧“日语报告助手”里填写表单。');
+    } else if (flow.id === 'jstyleStatus') {
+      r = await api('jstyle/status', {});
+      if (!r.ok) throw new Error(r.error || '状态读取失败');
+      jstyleResultBlock('日语报告助手状态', summarizeJstyleStatus(r.result), '32');
+    } else if (flow.id === 'jstyleMaterial') {
+      throw new Error('资料导入请在右侧“日语报告助手”里选择文件或文件夹。');
+    } else if (flow.id === 'jstyleGuard') {
+      r = await api('jstyle/guard', {});
+      if (!r.ok) throw new Error(r.error || '草稿检查失败');
+      jstyleResultBlock('草稿检查完成', summarizeJstyleGuard(r.result), r.result?.passed ? '32' : '31');
+    } else if (flow.id === 'jstyleIndex') {
+      r = await api('jstyle/index', {});
+      if (!r.ok) throw new Error(r.error || '资料读取失败');
+      jstyleResultBlock('资料读取完成', summarizeJstyleIndex(r.result), '32');
+    }
+  } catch (e) {
+    jstyleResultBlock('日语报告助手失败', String(e.message || e), '31');
+    toast('日语报告助手失败: ' + String(e.message || e), true, 8000);
+  } finally {
+    setAgentState('待命');
+    focusComposer();
+  }
+}
+function cancelRunner() {
+  if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'cancel' }));
+}
+function resizeComposer() {
+  const el = $('composer');
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 150) + 'px';
+  refitTerm();
+}
+function focusComposer() {
+  if (drawerMode !== 'agent') return;
+  $('composer').focus({ preventScroll: true });
+}
+function holdComposerFocus(ms = 1000) {
+  clearInterval(focusGuardTimer);
+  const until = Date.now() + ms;
+  const tick = () => {
+    if (drawerMode !== 'agent' || !document.body.classList.contains('open') || $('mask').classList.contains('show') || $('project-mask').classList.contains('show') || actionDialogOpen()) {
+      clearInterval(focusGuardTimer);
+      return;
+    }
+    const active = document.activeElement;
+    if (active === $('ol') || active === document.body || active === null) focusComposer();
+    if (Date.now() >= until) clearInterval(focusGuardTimer);
+  };
+  tick();
+  focusGuardTimer = setInterval(tick, 80);
+}
+function setComposerValue(text) {
+  $('composer').value = text || '';
+  resizeComposer();
+  setOpen(true, 'agent');
+  setTimeout(() => focusComposer(), 20);
+}
+function sendComposer() {
+  const text = $('composer').value.replace(/\s+$/u, '');
+  if (!text) return;
+  if (!sendPromptToRunner(text)) return;
+  setAgentState('思考中', true);
+  $('composer').value = '';
+  resizeComposer();
+  focusComposer();
+}
+function showOverleafFrame(src) {
+  $('ol-empty').classList.remove('show');
+  $('ol').classList.remove('hidden');
+  $('ol').src = src || '/project';
+}
+function showLocalProject(project) {
+  const p = project || appConfig?.project || {};
+  const isJstyle = (p.modules || []).includes('japanese-style-rag') || p.rag?.enabled;
+  $('ol').classList.add('hidden');
+  $('ol').src = 'about:blank';
+  $('empty-title').textContent = p.label || '本地项目';
+  $('empty-desc').textContent = isJstyle
+    ? '这个项目没有绑定 Overleaf；可以用右侧“写作助手”和“日语报告助手”继续写作。'
+    : '这个项目没有绑定 Overleaf，左侧编辑器会保持关闭；可以直接使用右侧写作助手。';
+  $('empty-path').textContent = p.paperDir || '';
+  $('ol-empty').classList.add('show');
+}
+$('empty-open-agent').addEventListener('click', () => setOpen(true, 'agent'));
+$('empty-create-overleaf').addEventListener('click', async () => {
+  const btn = $('empty-create-overleaf');
+  btn.disabled = true;
+  btn.textContent = '创建中...';
+  try {
+    const r = await api('project/create-overleaf', {});
+    if (!r.ok) throw new Error(r.error || '创建 Overleaf 失败');
+    moduleStatusCache = null;
+    await loadCfg(false);
+    await boot();
+    toast(`已创建 Overleaf 项目：${r.overleaf?.name || r.project?.overleafProjectName || ''}`);
+  } catch (e) {
+    toast('创建 Overleaf 失败: ' + String(e.message || e), true, 9000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '创建 Overleaf 并打开';
+  }
+});
+$('composer').addEventListener('input', resizeComposer);
+$('composer').addEventListener('compositionstart', () => { composing = true; });
+$('composer').addEventListener('compositionend', () => { composing = false; });
+$('composer').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !composing && !e.isComposing) {
+    e.preventDefault();
+    sendComposer();
+  }
+});
+$('send').onclick = sendComposer;
+$('term-wrap').addEventListener('click', () => focusComposer());
+for (const btn of document.querySelectorAll('[data-raw]')) {
+  btn.addEventListener('click', () => {
+    const v = btn.dataset.raw;
+    if (v === 'ctrl-c') {
+      cancelRunner();
+      setAgentState('停止中', true);
+    } else if (v === 'clear') {
+      term.reset();
+      setAgentState('待命');
+    } else if (v === 'submit') {
+      sendComposer();
+    }
+    focusComposer();
+  });
+}
+
+/* ---------- 同步 ---------- */
+const busy = (btn, on, icon) => { btn.disabled = on; btn.innerHTML = on ? '<span class="spin">◌</span>' : icon; };
+$('pull').onclick = async () => {
+  busy($('pull'), true, '⬇');
+  try {
+    const r = await api('pull', {});
+    if (!r.ok) toast('拉取失败: ' + r.error, true);
+    else toast(r.changed.length ? `已拉取 ${r.changed.length} 个文件：${r.changed.join('、')}` : '已是最新，无变化');
+  } finally { busy($('pull'), false, '⬇'); }
+};
+$('push').onclick = async () => {
+  busy($('push'), true, '⬆');
+  try {
+    const r = await api('push', {});
+    if (r.error) return toast('推送失败: ' + r.error, true);
+    const bad = (r.results || []).filter((x) => !x.ok);
+    if (bad.length) toast('部分失败: ' + bad.map((b) => `${b.file} (${b.msg})`).join('；'), true, 8000);
+    else toast(`已推送 ${r.results.length} 个文件 ✓  (Overleaf 里点 Recompile)`);
+  } finally { busy($('push'), false, '⬆'); }
+};
+$('restart').onclick = () => {
+  setAgentState('重启中', true);
+  ws?.readyState === 1 && ws.send(JSON.stringify({ t: 'restart' }));
+};
+
+/* ---------- Agent 写作动作 / Prompt Registry ---------- */
+function renderActions() {
+  const box = $('actions');
+  box.innerHTML = '';
+  const agentFlows = flowDefs.filter((flow) => !jstyleFlowIds.has(flow.id));
+  for (const flow of agentFlows) {
+    const btn = document.createElement('button');
+    btn.className = 'qbtn';
+    btn.textContent = flow.label || flow.id;
+    btn.title = (flow.title || '运行动作') + '（点击运行，Shift+点击只填入）';
+    btn.addEventListener('click', (e) => useFlow(flow, e.shiftKey));
+    box.appendChild(btn);
+  }
+}
+async function useFlow(flow, fillOnly = false) {
+  let arg = flow.defaultArg || '';
+  if (flow.argLabel) {
+    arg = await askActionArg(flow, fillOnly);
+    if (arg === null) return;
+  }
+  const r = await api('prompts/render', { id: flow.id, arg });
+  if (!r.ok) return toast('生成 prompt 失败: ' + r.error, true);
+  if (fillOnly) {
+    setComposerValue(r.prompt);
+    return;
+  }
+  if (['jstyleGenerate', 'jstyleStatus', 'jstyleMaterial', 'jstyleIndex', 'jstyleGuard'].includes(flow.id)) {
+    await runJstyleAction(flow, arg);
+    return;
+  }
+  if (!sendPromptToRunner(r.prompt)) return;
+  setAgentState('思考中', true);
+  $('composer').value = '';
+  resizeComposer();
+  focusComposer();
+}
+function promptEditorOptions() {
+  const sel = $('cfg-prompt-kind');
+  const current = sel.value;
+  sel.innerHTML = '';
+  const flowGroup = document.createElement('optgroup');
+  flowGroup.label = '快捷动作';
+  for (const flow of flowDefs.filter((item) => !jstyleFlowIds.has(item.id))) {
+    const opt = document.createElement('option');
+    opt.value = 'flow:' + flow.id;
+    opt.textContent = `${flow.label || flow.id} · ${flow.title || flow.id}`;
+    flowGroup.appendChild(opt);
+  }
+  sel.appendChild(flowGroup);
+
+  const skillGroup = document.createElement('optgroup');
+  skillGroup.label = '规则与专用提示';
+  for (const key of Object.keys(skillTemplates)) {
+    const opt = document.createElement('option');
+    opt.value = 'skill:' + key;
+    opt.textContent = key;
+    skillGroup.appendChild(opt);
+  }
+  sel.appendChild(skillGroup);
+  if ([...sel.options].some((o) => o.value === current)) sel.value = current;
+  syncPromptEditor();
+}
+function defaultPromptValue(kind) {
+  const [type, id] = String(kind || '').split(':');
+  if (type === 'flow') return flowDefs.find((f) => f.id === id)?.prompt || '';
+  if (type === 'skill') return skillTemplates[id] || '';
+  return '';
+}
+function syncPromptEditor() {
+  const kind = $('cfg-prompt-kind').value;
+  const [type, id] = kind.split(':');
+  const value = type === 'flow'
+    ? (promptDrafts[id] ?? defaultPromptValue(kind))
+    : (skillDrafts[id] ?? defaultPromptValue(kind));
+  $('cfg-prompt-body').value = value || '';
+}
+$('cfg-prompt-kind').addEventListener('change', syncPromptEditor);
+$('cfg-prompt-body').addEventListener('input', () => {
+  const kind = $('cfg-prompt-kind').value;
+  const [type, id] = kind.split(':');
+  if (!id) return;
+  if (type === 'flow') promptDrafts[id] = $('cfg-prompt-body').value;
+  else if (type === 'skill') skillDrafts[id] = $('cfg-prompt-body').value;
+});
+$('cfg-prompt-reset').addEventListener('click', () => {
+  const kind = $('cfg-prompt-kind').value;
+  const [type, id] = kind.split(':');
+  if (type === 'flow') delete promptDrafts[id];
+  else if (type === 'skill') delete skillDrafts[id];
+  syncPromptEditor();
+});
+$('cfg-agent-provider').addEventListener('change', () => {
+  syncAgentPanels(true);
+  refreshModelOptions(false);
+});
+$('cfg-agent-model').addEventListener('change', syncCustomModelInput);
+$('cfg-refresh-models').addEventListener('click', () => refreshModelOptions(true));
+async function loadPrompts() {
+  const r = await api('prompts');
+  if (!r.ok) return toast('读取 prompt 失败', true);
+  flowDefs = r.flows || [];
+  skillTemplates = r.skillPrompts || {};
+  promptDrafts = { ...(r.overrides || {}) };
+  skillDrafts = { ...(r.skillOverrides || {}) };
+  renderActions();
+  renderModulePanel();
+  promptEditorOptions();
+}
+
+/* ---------- 项目 / 设置 ---------- */
+async function loadProjects(activeId) {
+  const r = await api('projects');
+  if (!r.ok) return;
+  projects = r.projects || [];
+  const select = $('project-select');
+  const current = activeId || r.activeProjectId || select.value;
+  select.innerHTML = '';
+  const configuredGroup = document.createElement('optgroup');
+  configuredGroup.label = '我的项目';
+  for (const p of projects) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.label || p.id;
+    configuredGroup.appendChild(opt);
+  }
+  select.appendChild(configuredGroup);
+  select.value = current;
+}
+function slugId(text, fallback = 'project') {
+  return String(text || 'project')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 42) || fallback;
+}
+function uniqueProjectId(label, fallback = 'project') {
+  const base = slugId(label, fallback);
+  if (!projects.some((p) => p.id === base)) return base;
+  return `${base}-${Date.now().toString(36).slice(-5)}`;
+}
+function basenameFromPath(p) {
+  return String(p || '').replace(/\/+$/g, '').split('/').filter(Boolean).pop() || '';
+}
+function defaultProjectDir(label, kind) {
+  const fallback = kind === 'report' ? 'course-report' : 'paper-project';
+  const name = String(label || '')
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || fallback;
+  return './projects/' + name;
+}
+function applyNewProjectDefaults(force = false) {
+  const kind = $('new-kind').value;
+  const labelEl = $('new-label');
+  const dirEl = $('new-paperdir');
+  const overleafEl = $('new-overleaf');
+  const defaultLabel = kind === 'report' ? '我的课程报告' : '我的论文';
+  const labelLooksDefault = ['我的课程报告', '我的论文'].includes(labelEl.value.trim());
+  if (force || !labelEl.value.trim() || labelLooksDefault) labelEl.value = defaultLabel;
+  if (kind === 'report') {
+    if (force || !dirEl.value.trim() || dirEl.dataset.auto === '1') dirEl.value = defaultProjectDir(labelEl.value, kind);
+    if (force || !dirEl.dataset.auto) dirEl.dataset.auto = '1';
+    overleafEl.value = '';
+    overleafEl.disabled = true;
+    overleafEl.placeholder = '课程报告会自动创建 Overleaf';
+  } else {
+    if (force || !dirEl.value.trim() || dirEl.dataset.auto === '1') dirEl.value = defaultProjectDir(labelEl.value, kind);
+    if (force || !dirEl.dataset.auto) dirEl.dataset.auto = '1';
+    overleafEl.disabled = false;
+    overleafEl.placeholder = '可空；填写后会打开对应 Overleaf 项目';
+  }
+}
+function buildProjectFromForm() {
+  const kind = $('new-kind').value;
+  let paperDir = $('new-paperdir').value.trim();
+  const label = $('new-label').value.trim() || basenameFromPath(paperDir) || (kind === 'report' ? '我的课程报告' : '我的论文');
+  const overleaf = kind === 'paper' ? $('new-overleaf').value.trim() : '';
+  return buildProjectConfig(kind, label, paperDir, overleaf);
+}
+function buildProjectFromWizard() {
+  const kind = wizardKind;
+  if (!kind) throw new Error('请先选择课程报告或论文项目');
+  let paperDir = $('wizard-paperdir').value.trim();
+  const label = $('wizard-label').value.trim() || basenameFromPath(paperDir) || (kind === 'report' ? '我的课程报告' : '我的论文');
+  const overleafMode = $('wizard-overleaf-mode')?.value || 'create';
+  const overleaf = kind === 'paper' && overleafMode === 'existing' ? $('wizard-overleaf').value.trim() : '';
+  if (kind === 'paper' && overleafMode === 'existing' && !overleaf) throw new Error('请填写已有 Overleaf 项目名，或改选自动创建新的 Overleaf 项目');
+  return buildProjectConfig(kind, label, paperDir, overleaf);
+}
+function buildProjectConfig(kind, label, paperDir, overleafProjectName = '') {
+  if (!label) throw new Error('请填写新项目名');
+  if (!paperDir) paperDir = defaultProjectDir(label, kind);
+  const project = {
+    id: uniqueProjectId(label, kind === 'report' ? 'course-report' : 'paper-project'),
+    label,
+    paperDir,
+    kind,
+    documentProfile: kind === 'report' ? 'course_report_japanese' : 'auto',
+    overleafProjectName: kind === 'paper' ? overleafProjectName : '',
+    pushPaths: kind === 'report' ? reportPushPaths : paperPushPaths,
+    agentProvider: appConfig?.project?.agentProvider || 'codex',
+    audit: { enabled: true, mode: 'post-diff' },
+    prompts: {},
+    skillPrompts: {},
+  };
+  if (kind === 'paper') {
+    project.promptSet = paperPromptSet;
+    project.modules = ['brainstorm'];
+    project.skills = ['paper-agent-brainstorm', 'research-writing-skill', 'writing-core', 'source-command-citecheck', 'paper-agent-audit'];
+  } else {
+    project.promptSet = ['brainstorm', 'ruleAudit'];
+    project.modules = ['brainstorm', 'japanese-style-rag'];
+    project.skills = ['paper-agent-project', 'paper-agent-brainstorm', 'paper-agent-audit'];
+  }
+  return project;
+}
+function shouldCreateOverleafFor(kind, mode = 'create', overleafName = '') {
+  if (overleafName) return false;
+  if (kind === 'report') return true;
+  return kind === 'paper' && mode === 'create';
+}
+function openProjectDialog(kind = 'paper') {
+  openProjectWizard(kind);
+}
+function setWizardKind(kind = '', force = false) {
+  wizardKind = kind === 'paper' ? 'paper' : (kind === 'report' ? 'report' : '');
+  const label = $('wizard-label');
+  const dir = $('wizard-paperdir');
+  const overleaf = $('wizard-overleaf');
+  const overleafChoice = $('wizard-overleaf-choice');
+  const overleafMode = $('wizard-overleaf-mode');
+  const overleafRow = $('wizard-overleaf-row');
+  const defaultLabel = wizardKind === 'report' ? '我的课程报告' : (wizardKind === 'paper' ? '我的论文' : '');
+  const labelLooksDefault = ['我的课程报告', '我的论文'].includes(label.value.trim());
+  if (defaultLabel && (force || !label.value.trim() || labelLooksDefault)) label.value = defaultLabel;
+  if (wizardKind && (force || !dir.value.trim() || dir.dataset.auto === '1')) {
+    dir.value = defaultProjectDir(label.value, wizardKind);
+    dir.dataset.auto = '1';
+  }
+  overleafChoice.style.display = wizardKind === 'paper' ? 'block' : 'none';
+  overleaf.disabled = wizardKind !== 'paper';
+  overleafRow.style.display = wizardKind === 'paper' && overleafMode.value === 'existing' ? 'block' : 'none';
+  if (wizardKind !== 'paper') overleaf.value = '';
+  $('wizard-kind-report').classList.toggle('active', wizardKind === 'report');
+  $('wizard-kind-paper').classList.toggle('active', wizardKind === 'paper');
+  $('wizard-note').textContent = wizardKind === 'report'
+    ? '创建时会自动创建 Overleaf，并直接打开日语报告助手。下一步只需要选择文件或文件夹导入课件、讲义、作业要求，再填写题目和字数。'
+    : (wizardKind === 'paper'
+      ? '默认会自动创建新的 Overleaf 项目，并进入写作助手。需要接已有项目时，手动改成“绑定已有 Overleaf 项目”。'
+      : '请先选择课程报告或论文项目。');
+  renderProjectWizardStep();
+}
+function setWizardStep(step) {
+  wizardStep = Math.min(Math.max(Number(step) || 1, 1), 3);
+  renderProjectWizardStep();
+}
+function renderProjectWizardStep() {
+  for (const step of [1, 2, 3]) {
+    $('wizard-step-' + step)?.classList.toggle('show', wizardStep === step);
+    $('wizard-progress-' + step)?.classList.toggle('active', wizardStep === step);
+  }
+  $('wizard-back').style.display = wizardStep === 1 ? 'none' : 'inline-flex';
+  $('wizard-next').style.display = wizardStep === 3 ? 'none' : 'inline-flex';
+  $('wizard-create').style.display = wizardStep === 3 ? 'inline-flex' : 'none';
+  $('wizard-desc').textContent = [
+    '先选你要完成的任务类型。助手会自动创建 Overleaf，并根据报告或论文准备后续界面。',
+    '给这个任务起一个你能认出来的名字。',
+    wizardKind === 'report'
+      ? '报告项目会自动创建 Overleaf，并直接进入日语报告助手。保存位置通常不用改。'
+      : '论文项目会自动创建新的 Overleaf 项目，也可以绑定已有项目或只创建本地项目。',
+  ][wizardStep - 1];
+}
+function focusProjectWizard() {
+  const el = wizardStep === 2 ? $('wizard-label') : (wizardStep === 3 && wizardKind === 'paper' && $('wizard-overleaf-mode').value === 'existing' ? $('wizard-overleaf') : null);
+  if (!el) return;
+  el.focus({ preventScroll: true });
+  el.select();
+}
+function openProjectWizard(kind = '') {
+  clearInterval(focusGuardTimer);
+  $('project-mask').classList.add('show');
+  setWizardKind(kind, true);
+  setWizardStep(1);
+}
+function closeProjectWizard() {
+  $('project-mask').classList.remove('show');
+}
+async function createProjectFromForm() {
+  applyNewProjectDefaults();
+  let project;
+  try {
+    project = buildProjectFromForm();
+  } catch (e) {
+    toast(String(e.message || e), true);
+    return;
+  }
+  const kind = $('new-kind').value;
+  const r = await api('projects', {
+    project,
+    activate: true,
+    createDir: true,
+    createOverleaf: shouldCreateOverleafFor(kind, 'create', project.overleafProjectName),
+  });
+  if (!r.ok) return toast('新建项目失败: ' + r.error, true);
+  moduleStatusCache = null;
+  $('new-label').value = '';
+  $('new-paperdir').value = '';
+  $('new-overleaf').value = '';
+  term.reset();
+  await loadCfg(false);
+  await boot();
+  $('mask').classList.remove('show');
+  toast('已新建并切换项目：' + (r.project?.label || project.label));
+  if (project.modules?.includes('japanese-style-rag')) setOpen(true, project.kind === 'report' ? 'jstyle' : 'agent');
+}
+async function switchProjectValue(id) {
+  const r = id.startsWith('overleaf:')
+    ? await api('project/from-overleaf', { name: id.slice('overleaf:'.length) })
+    : await api('project/select', { id });
+  if (!r.ok) return toast('切换项目失败: ' + r.error, true);
+  moduleStatusCache = null;
+  term.reset();
+  await loadCfg(false);
+  await boot();
+  toast('已切换项目：' + (r.project?.label || id));
+  focusComposer();
+}
+$('project-select').addEventListener('change', () => switchProjectValue($('project-select').value));
+$('new-project').addEventListener('click', () => openProjectWizard(''));
+$('new-label').addEventListener('input', () => {
+  if (!$('new-paperdir').value.trim() || $('new-paperdir').dataset.auto === '1') {
+    $('new-paperdir').value = defaultProjectDir($('new-label').value, $('new-kind').value);
+    $('new-paperdir').dataset.auto = '1';
+  }
+});
+$('new-paperdir').addEventListener('input', () => { $('new-paperdir').dataset.auto = '0'; });
+$('new-kind').addEventListener('change', () => applyNewProjectDefaults(false));
+$('create-project').addEventListener('click', createProjectFromForm);
+$('wizard-kind-report').addEventListener('click', () => setWizardKind('report', false));
+$('wizard-kind-paper').addEventListener('click', () => setWizardKind('paper', false));
+$('wizard-overleaf-mode').addEventListener('change', () => setWizardKind(wizardKind, false));
+$('wizard-label').addEventListener('input', () => {
+  if (!$('wizard-paperdir').value.trim() || $('wizard-paperdir').dataset.auto === '1') {
+    $('wizard-paperdir').value = defaultProjectDir($('wizard-label').value, wizardKind);
+    $('wizard-paperdir').dataset.auto = '1';
+  }
+});
+$('wizard-paperdir').addEventListener('input', () => { $('wizard-paperdir').dataset.auto = '0'; });
+$('wizard-back').addEventListener('click', () => {
+  setWizardStep(wizardStep - 1);
+  setTimeout(focusProjectWizard, 30);
+});
+$('wizard-next').addEventListener('click', () => {
+  if (wizardStep === 1 && !wizardKind) {
+    toast('请先选择“课程报告”或“论文项目”', true);
+    return;
+  }
+  if (wizardStep === 2 && !$('wizard-label').value.trim()) {
+    $('wizard-label').value = wizardKind === 'report' ? '我的课程报告' : '我的论文';
+    $('wizard-paperdir').value = defaultProjectDir($('wizard-label').value, wizardKind);
+    $('wizard-paperdir').dataset.auto = '1';
+  }
+  setWizardStep(wizardStep + 1);
+  setTimeout(focusProjectWizard, 30);
+});
+$('wizard-cancel').addEventListener('click', closeProjectWizard);
+$('project-mask').addEventListener('click', (e) => {
+  if (e.target === $('project-mask')) closeProjectWizard();
+});
+$('wizard-create').addEventListener('click', async () => {
+  let project;
+  try {
+    project = buildProjectFromWizard();
+  } catch (e) {
+    toast(String(e.message || e), true);
+    return;
+  }
+  const overleafMode = $('wizard-overleaf-mode')?.value || 'create';
+  const r = await api('projects', {
+    project,
+    activate: true,
+    createDir: true,
+    createOverleaf: shouldCreateOverleafFor(wizardKind, overleafMode, project.overleafProjectName),
+  });
+  if (!r.ok) return toast('新建项目失败: ' + r.error, true);
+  moduleStatusCache = null;
+  term.reset();
+  await loadCfg(false);
+  await boot();
+  closeProjectWizard();
+  toast((r.overleaf?.name ? `已创建 Overleaf 项目：${r.overleaf.name}；` : '') + '已新建并切换项目：' + (r.project?.label || project.label));
+  setOpen(true, project.kind === 'report' ? 'jstyle' : 'agent');
+});
+$('delete-project').addEventListener('click', async () => {
+  const p = appConfig?.project;
+  if (!p) return;
+  if (!confirm(`删除项目「${p.label}」？本地文件和 Overleaf 项目不会删除。`)) return;
+  const r = await api('project/delete', { id: p.id });
+  if (!r.ok) return toast('删除项目失败: ' + r.error, true);
+  moduleStatusCache = null;
+  term.reset();
+  await loadCfg(false);
+  await boot();
+  $('mask').classList.remove('show');
+  toast('已删除项目');
+});
+async function loadCfg(openIfMissing = true) {
+  const c = await api('config');
+  if (loadedProjectId && loadedProjectId !== c.project?.id) moduleStatusCache = null;
+  loadedProjectId = c.project?.id || '';
+  appConfig = c;
+  const p = c.project || {};
+  const agents = c.agents || {};
+  const agentId = p.agentProvider || 'codex';
+  $('agent-name').textContent = (agents[agentId]?.label || agentId || '写作助手');
+  $('proj').textContent = '· ' + (p.label || c.projectName || '');
+  $('cfg-email').value = c.email || '';
+  $('cfg-label').value = p.label || '';
+  $('cfg-proj').value = p.overleafProjectName || '';
+  $('cfg-modules').value = (p.modules || []).join(', ') || '无';
+  $('cfg-paperdir').value = p.paperDir || '';
+  $('cfg-pushpaths').value = (p.pushPaths || []).join('\n');
+  $('cfg-audit').checked = p.audit?.enabled !== false;
+  const provider = $('cfg-agent-provider');
+  provider.innerHTML = '';
+  for (const [id, agent] of Object.entries(agents)) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = agent.label || id;
+    provider.appendChild(opt);
+  }
+  if (![...provider.options].some((o) => o.value === agentId)) {
+    const opt = document.createElement('option');
+    opt.value = agentId;
+    opt.textContent = agentId;
+    provider.appendChild(opt);
+  }
+  provider.value = agentId;
+  $('cfg-codex').value = agents.codex?.command || c.codexCmd || 'codex';
+  $('cfg-claude-cmd').value = agents.claude?.command || 'claude';
+  $('cfg-claude-perm').value = agents.claude?.permissionMode || 'bypassPermissions';
+  $('cfg-api-base').value = agents.api?.baseUrl || 'http://localhost:8000/v1';
+  $('cfg-api-key-env').value = agents.api?.apiKeyEnv || 'OPENAI_API_KEY';
+  $('cfg-custom-cmd').value = agents.custom?.command || '';
+  $('cfg-custom-args').value = agents.custom?.args || '';
+  $('cfg-custom-mode').value = agents.custom?.promptMode || 'stdin';
+  setModelOptions([], agents[agentId]?.model || '');
+  syncAgentPanels(false);
+  refreshModelOptions(false);
+  $('pw-hint').textContent = c.hasPassword ? '(已保存)' : '(未设置!)';
+  $('pull').disabled = !p.hasOverleaf;
+  $('push').disabled = !p.hasOverleaf;
+  await loadProjects(c.activeProjectId);
+  await loadPrompts();
+  updateFabVisibility();
+  applyDrawerMode(drawerMode);
+  if (openIfMissing && p.hasOverleaf && (!c.email || !c.hasPassword)) { $('mask').classList.add('show'); setOpen(true, 'agent'); }
+  return c;
+}
+$('gear').onclick = () => $('mask').classList.add('show');
+$('cfg-cancel').onclick = () => $('mask').classList.remove('show');
+$('cfg-save').onclick = async () => {
+  const agents = collectAgentFormConfig();
+  const cfg = await api('config', {
+    email: $('cfg-email').value,
+    password: $('cfg-pw').value,
+    label: $('cfg-label').value,
+    projectName: $('cfg-proj').value,
+    paperDir: $('cfg-paperdir').value,
+    pushPaths: $('cfg-pushpaths').value,
+    auditEnabled: $('cfg-audit').checked,
+    codexCmd: $('cfg-codex').value,
+    agentProvider: $('cfg-agent-provider').value,
+    agents,
+  });
+  if (!cfg.ok) return toast('保存设置失败: ' + cfg.error, true);
+  const pr = await api('prompts', { prompts: promptDrafts, skillPrompts: skillDrafts });
+  if (!pr.ok) return toast('保存 prompt 失败', true);
+  $('mask').classList.remove('show');
+  $('cfg-pw').value = '';
+  await loadCfg(false);
+  toast('设置已保存；写作助手和提示词会在下次运行前刷新');
+  await boot();
+};
+
+/* ---------- 启动: 自动登录 → 直达项目编辑器 ---------- */
+async function boot() {
+  const active = appConfig?.project;
+  if (active && !active.hasOverleaf) {
+    showLocalProject(active);
+    return;
+  }
+  const r = await api('autologin');
+  if (!r.ok) toast('自动登录失败: ' + r.error + '（可在 iframe 中手动登录）', true, 7000);
+  showOverleafFrame(r.url || '/project');
+}
+initSession()
+  .then(() => {
+    connect();
+    return loadCfg();
+  })
+  .then((c) => {
+    if (c.project?.hasOverleaf) {
+      if (c.email && c.hasPassword) boot();
+      else showOverleafFrame('/login');
+    } else {
+      showLocalProject(c.project);
+    }
+  })
+  .catch((e) => {
+    toast('Paper Agent 启动失败: ' + String(e.message || e), true, 10000);
+  });
+</script>
+</body>
+</html>

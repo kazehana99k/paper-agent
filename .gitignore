@@ -1,0 +1,9 @@
+node_modules/
+runtime/
+backups/
+projects/
+server.log
+config.json
+.env
+.DS_Store
+*.log

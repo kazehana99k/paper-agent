@@ -1,0 +1,57 @@
+{
+  "port": 8080,
+  "overleafUrl": "http://127.0.0.1:80",
+  "email": "",
+  "password": "",
+  "codexCmd": "codex",
+  "agents": {
+    "codex": {
+      "id": "codex",
+      "type": "codex",
+      "label": "Codex",
+      "command": "codex",
+      "model": ""
+    },
+    "claude": {
+      "id": "claude",
+      "type": "claude-code",
+      "label": "Claude Code",
+      "command": "claude",
+      "model": "",
+      "permissionMode": "bypassPermissions"
+    },
+    "api": {
+      "id": "api",
+      "type": "openai-compatible",
+      "label": "API Agent",
+      "baseUrl": "http://localhost:8000/v1",
+      "model": "",
+      "apiKeyEnv": "OPENAI_API_KEY"
+    },
+    "custom": {
+      "id": "custom",
+      "type": "custom-cli",
+      "label": "Custom CLI",
+      "command": "",
+      "args": "",
+      "promptMode": "stdin"
+    }
+  },
+  "activeProjectId": "workspace",
+  "projects": [
+    {
+      "id": "workspace",
+      "label": "My Paper Project",
+      "paperDir": "./projects/my-paper-project",
+      "overleafProjectName": "",
+      "kind": "paper",
+      "documentProfile": "auto",
+      "agentProvider": "codex",
+      "pushPaths": ["main.tex", "references.bib", "figures"],
+      "promptSet": ["brainstorm", "polish", "translate", "review", "citecheck", "compile", "ruleAudit"],
+      "modules": ["brainstorm", "japanese-style-rag"],
+      "skills": ["paper-agent-brainstorm", "research-writing-skill", "writing-core", "source-command-citecheck", "paper-agent-audit"],
+      "audit": { "enabled": true, "mode": "post-diff" }
+    }
+  ]
+}

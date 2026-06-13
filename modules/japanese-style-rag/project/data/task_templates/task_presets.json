@@ -1,0 +1,50 @@
+[
+  {
+    "id": "report",
+    "label": "授業レポート",
+    "target_style": "undergraduate_report",
+    "default_word_count": 1600,
+    "required_materials": [
+      "report_template",
+      "course_slide",
+      "lecture_note",
+      "book"
+    ],
+    "recommended_materials": [
+      "academic_paper",
+      "public_report",
+      "user_note"
+    ],
+    "instruction_ja": "授業レポートとして、課題要件、授業資料、教科書・講義ノート、必要に応じた外部資料を分けて扱う。授業資料は文脈、書籍は概念、論文は先行研究、公的報告は背景・統計として使う。"
+  },
+  {
+    "id": "literature_review",
+    "label": "文献レビュー",
+    "target_style": "literature_review",
+    "default_word_count": 2200,
+    "required_materials": [
+      "academic_paper"
+    ],
+    "recommended_materials": [
+      "book",
+      "public_report",
+      "user_note"
+    ],
+    "instruction_ja": "文献レビューとして、先行研究を羅列せず、比較軸、方法、限界、未解決問題を整理する。"
+  },
+  {
+    "id": "research_proposal",
+    "label": "研究計画書",
+    "target_style": "research_proposal",
+    "default_word_count": 1800,
+    "required_materials": [
+      "academic_paper",
+      "public_report"
+    ],
+    "recommended_materials": [
+      "book",
+      "user_note"
+    ],
+    "instruction_ja": "研究計画書として、背景、課題、目的、方法、評価観点、期待される貢献を対応させる。"
+  }
+]

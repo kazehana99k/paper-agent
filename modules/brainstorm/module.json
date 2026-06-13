@@ -1,0 +1,8 @@
+{
+  "id": "brainstorm",
+  "label": "Brainstorm",
+  "description": "Turn loose research ideas into a project context, claim map, paper outline, and next-action checklist.",
+  "kind": "planning",
+  "skill": "paper-agent-brainstorm",
+  "actions": ["brainstorm", "contextMap", "outline"]
+}

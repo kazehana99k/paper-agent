@@ -1,0 +1,15 @@
+{
+  "id": "japanese-style-rag",
+  "label": "日语报告助手",
+  "description": "上传课件、讲义、作业要求和笔记，生成并检查日语报告草稿。",
+  "kind": "rag",
+  "projectDir": "project",
+  "runtime": "paper-agent-module",
+  "ui": {
+    "type": "workbench",
+    "view": "japanese-style-rag"
+  },
+  "actions": ["jstyleStatus", "jstyleMaterial", "jstyleGenerate", "jstyleIndex", "jstyleGuard", "brainstorm"],
+  "materialTypes": ["report_template", "course_slide", "lecture_note", "course_handout", "book", "academic_paper", "public_report", "user_note"],
+  "taskPresets": ["report", "literature_review", "research_proposal"]
+}
