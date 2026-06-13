@@ -1,7 +1,7 @@
 {
   "name": "paper-agent",
   "version": "1.0.0",
-  "description": "Local Overleaf + multi-agent research writing app with project modules.",
+  "description": "本机 Overleaf + 多 Agent 论文和课程报告写作工作台。",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
