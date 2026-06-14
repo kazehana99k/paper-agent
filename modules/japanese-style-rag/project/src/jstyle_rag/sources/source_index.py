@@ -25,6 +25,7 @@ def build_source_index(config: AppConfig | None = None) -> int:
             "metadata": {
                 "chunk_id": chunk["chunk_id"],
                 "source_file": chunk["source_file"],
+                "raw_file_sha256": chunk.get("raw_file_sha256", ""),
                 "page": chunk.get("page") or "",
                 "section": chunk.get("section") or "",
                 "source_type": chunk.get("source_type", "unknown"),
@@ -121,6 +122,11 @@ def _assert_index_manifest_compatible(cfg: AppConfig) -> None:
         for key, value in expected.items()
         if manifest.get(key) != value
     ]
+    current_chunks_sha256 = _chunks_fingerprint(load_source_chunks(cfg))
+    if manifest.get("chunks_sha256") != current_chunks_sha256:
+        mismatches.append(
+            f"chunks_sha256: index={manifest.get('chunks_sha256')!r}, current={current_chunks_sha256!r}"
+        )
     if mismatches:
         raise RuntimeError("source index embedding settings are stale; rebuild index. " + "; ".join(mismatches))
 
@@ -140,6 +146,7 @@ def _source_result_to_dict(result: VectorSearchResult) -> dict[str, Any]:
     return {
         "chunk_id": metadata.get("chunk_id", result.record_id),
         "source_file": metadata.get("source_file", ""),
+        "raw_file_sha256": metadata.get("raw_file_sha256", ""),
         "page": metadata.get("page", ""),
         "section": metadata.get("section", ""),
         "source_type": metadata.get("source_type", "unknown"),

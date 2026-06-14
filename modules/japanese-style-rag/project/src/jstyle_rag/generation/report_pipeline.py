@@ -15,6 +15,7 @@ from jstyle_rag.style.style_retriever import retrieve_abstract_style_advice
 from .anti_ai_editor import soften_ai_repetition
 from .generator import ReportGenerator
 from .prompt_builder import build_report_prompt
+from .provenance import build_paragraph_sources, build_run_manifest
 
 
 def generate_report(
@@ -66,14 +67,40 @@ def generate_report(
         citation_result.text,
         style_chunks=load_style_raw_chunks(cfg),
     )
+    paragraph_sources = build_paragraph_sources(citation_result.text, sources)
+    citation_warnings = [warning.to_dict() for warning in citation_result.warnings]
+    similarity_warning_dicts = [warning.to_dict() for warning in similarity_warnings]
+    run_manifest = build_run_manifest(
+        config=cfg,
+        topic=topic,
+        word_count=word_count,
+        discipline=discipline,
+        target_style=target_style,
+        requirements=requirements,
+        user_points=user_points or [],
+        top_k_style=top_k_style,
+        top_k_sources=top_k_sources,
+        top_k_templates=top_k_templates,
+        prompt=prompt,
+        raw_response=generated.raw_response,
+        draft=citation_result.text,
+        style_profiles=style_profiles,
+        template_chunks=template_chunks,
+        source_chunks=sources,
+        paragraph_sources=paragraph_sources,
+        citation_warnings=citation_warnings,
+        similarity_warnings=similarity_warning_dicts,
+    )
     result = {
         "outline": generated.outline,
         "draft": citation_result.text,
-        "citation_warnings": [warning.to_dict() for warning in citation_result.warnings],
-        "similarity_warnings": [warning.to_dict() for warning in similarity_warnings],
+        "citation_warnings": citation_warnings,
+        "similarity_warnings": similarity_warning_dicts,
+        "paragraph_sources": paragraph_sources,
         "style_profiles_used": style_profiles,
         "templates_used": template_chunks,
         "sources_used": sources,
+        "run_manifest": run_manifest,
         "prompt": prompt,
     }
     if save:

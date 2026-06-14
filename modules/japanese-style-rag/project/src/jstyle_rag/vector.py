@@ -174,7 +174,7 @@ class JsonVectorIndex:
                     score=score,
                 )
             )
-        results.sort(key=lambda item: item.score, reverse=True)
+        results.sort(key=lambda item: (-item.score, item.record_id))
         return results[:top_k]
 
     def _iter_records(self) -> Iterable[dict[str, Any]]:
@@ -234,6 +234,7 @@ class ChromaVectorIndex:
         for record_id, doc, metadata, distance in zip(ids, docs, metadatas, distances):
             score = 1.0 - float(distance)
             results.append(VectorSearchResult(str(record_id), doc or "", metadata or {}, score))
+        results.sort(key=lambda item: (-item.score, item.record_id))
         return results
 
 

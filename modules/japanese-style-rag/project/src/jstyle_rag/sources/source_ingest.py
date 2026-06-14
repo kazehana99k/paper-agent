@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -36,11 +37,13 @@ def ingest_sources(config: AppConfig | None = None) -> list[dict[str, Any]]:
             infer_source_metadata(relative, text),
             load_sidecar_metadata(path),
         )
+        raw_file_sha256 = _file_sha256(path)
         for chunk in chunks:
             records.append(
                 {
                     "chunk_id": chunk.chunk_id,
                     "source_file": chunk.source_file,
+                    "raw_file_sha256": raw_file_sha256,
                     "page": chunk.page,
                     "section": chunk.section,
                     **source_metadata,
@@ -66,3 +69,11 @@ def load_source_chunks(config: AppConfig | None = None) -> list[dict[str, Any]]:
             if line.strip():
                 chunks.append(json.loads(line))
     return chunks
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()

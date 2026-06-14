@@ -33,8 +33,11 @@ class GenerateReportResponse(BaseModel):
     draft: str
     citation_warnings: list[dict[str, Any]]
     similarity_warnings: list[dict[str, Any]]
+    paragraph_sources: list[dict[str, Any]]
     style_profiles_used: list[dict[str, Any]]
+    templates_used: list[dict[str, Any]] = Field(default_factory=list)
     sources_used: list[dict[str, Any]]
+    run_manifest: dict[str, Any] = Field(default_factory=dict)
 
 
 class CheckCitationsRequest(BaseModel):

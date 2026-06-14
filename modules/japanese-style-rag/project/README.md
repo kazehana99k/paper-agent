@@ -169,6 +169,16 @@ uv run jstyle generate --topic "..." --discipline sociology --target-style under
 
 The prompt explicitly tells the model that style profiles are not content sources, source corpus is required for concrete facts, and unsupported factual claims must be marked `[要出典確認]`.
 
+## Reproducibility Artifacts
+
+Every `generate` result includes machine-readable provenance:
+
+- `run_manifest`: input hashes, generation provider/model/parameters, embedding/index snapshot, retrieved source/template/style references, prompt hash, draft hash, guard summary, and a stable `run_id`.
+- `paragraph_sources`: one row per draft paragraph, with a paragraph hash, grounding status, source-marker flag, factual-trigger flag, and ranked source chunk candidates.
+
+These fields are also persisted in saved JSON outputs and in Paper Agent's project-local `outputs/japanese-style-rag/latest-draft.json`.
+`report_template` chunks are excluded from paragraph-level factual bindings; they remain structure/style references only.
+
 ## API
 
 ```bash

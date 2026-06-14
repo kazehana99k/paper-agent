@@ -1139,6 +1139,10 @@ function summarizeJstyleGenerate(result) {
   if (result.draft) lines.push(`\n草稿:\n${result.draft}`);
   const citation = result.citation_warnings || [];
   const similarity = result.similarity_warnings || [];
+  const paragraphSources = result.paragraph_sources || [];
+  const needsSource = paragraphSources.filter((item) => item?.grounding_status === 'needs_source').length;
+  if (result.run_manifest?.run_id) lines.push(`复现记录: ${result.run_manifest.run_id}`);
+  if (paragraphSources.length) lines.push(`段落出处: ${paragraphSources.length - needsSource}/${paragraphSources.length} 段已有候选依据`);
   lines.push(`\n缺少来源说明: ${citation.length}`);
   lines.push(`可能和资料原文太像的地方: ${similarity.length}`);
   if (citation.length || similarity.length) lines.push('建议点击“检查草稿”查看需要修改的地方。');

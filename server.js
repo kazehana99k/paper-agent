@@ -2345,6 +2345,12 @@ function jstyleDraftMarkdown(data, sourceLabel = '') {
   if (Array.isArray(data?.sources_used) && data.sources_used.length) {
     lines.push('', '## Sources Used', '', JSON.stringify(data.sources_used, null, 2));
   }
+  if (Array.isArray(data?.paragraph_sources) && data.paragraph_sources.length) {
+    lines.push('', '## Paragraph Sources', '', JSON.stringify(data.paragraph_sources, null, 2));
+  }
+  if (data?.run_manifest && typeof data.run_manifest === 'object') {
+    lines.push('', '## Run Manifest', '', JSON.stringify(data.run_manifest, null, 2));
+  }
   return `${lines.join('\n')}\n`;
 }
 
