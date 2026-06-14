@@ -708,6 +708,7 @@ let jstyleLastResultKind = '';
 let agentToken = '';
 let sessionPromise = null;
 const paperPromptSet = ['brainstorm', 'polish', 'translate', 'review', 'citecheck', 'compile', 'ruleAudit'];
+const reportPromptSet = ['brainstorm', 'reportPolish', 'reportHumanize', 'review', 'compile', 'ruleAudit'];
 const paperPushPaths = ['main.tex', 'references.bib', 'figures'];
 const reportPushPaths = ['main.tex', 'references.bib', 'figures'];
 const jstyleFlowIds = new Set(['jstyleStatus', 'jstyleMaterial', 'jstyleGenerate', 'jstyleIndex', 'jstyleGuard']);
@@ -2008,7 +2009,7 @@ function buildProjectConfig(kind, label, paperDir, overleafProjectName = '') {
     project.modules = ['brainstorm'];
     project.skills = ['paper-agent-brainstorm', 'research-writing-skill', 'writing-core', 'source-command-citecheck', 'paper-agent-audit'];
   } else {
-    project.promptSet = ['brainstorm', 'ruleAudit'];
+    project.promptSet = reportPromptSet;
     project.modules = ['brainstorm', 'japanese-style-rag'];
     project.skills = ['paper-agent-project', 'paper-agent-brainstorm', 'paper-agent-audit'];
   }

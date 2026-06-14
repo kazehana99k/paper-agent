@@ -23,7 +23,7 @@ function tempProject(kind = 'report') {
 
 test('report projects get usable Overleaf push defaults', () => {
   assert.deepEqual(contract.defaultPushPathsForKind('report'), ['main.tex', 'references.bib', 'figures']);
-  assert.deepEqual(contract.defaultPromptSetForKind('report'), ['brainstorm', 'reportPolish', 'review', 'compile', 'ruleAudit']);
+  assert.deepEqual(contract.defaultPromptSetForKind('report'), ['brainstorm', 'reportPolish', 'reportHumanize', 'review', 'compile', 'ruleAudit']);
   assert.deepEqual(contract.defaultModulesForKind('report'), ['brainstorm', 'japanese-style-rag']);
 });
 

@@ -117,6 +117,44 @@ const DEFAULT_FLOW_PROMPTS = {
     defaultArg: '全文',
     prompt: '请按日本語の授業レポート标准润色当前 main.tex 的「{{target}}」。当前项目类型提示：{{reviewProfile}}。\n\n要求：先拉取 Overleaf 最新版（只运行下一行命令）：\n{{paperAgentPullCommand}}\n\n然后读取 main.tex、本项目 AGENTS.md、以及 Japanese Style RAG 的 processed source chunks。只改日语表达、结构清晰度、符号一致性和 LaTeX 小问题；不得改写成研究论文，不得套其他论文项目或顶会审稿标准，不得把 report_template 当事实来源。若涉及课程事实、定理、定义，必须以 course_slide/course_handout/lecture_note/book 为依据。改完运行可用的编译/检查命令；如果当前项目没有这些工具，明确说明未运行。',
   },
+  reportHumanize: {
+    label: '真人感',
+    title: '日语报告真人感改写',
+    argLabel: '改写范围',
+    defaultArg: '全文',
+    prompt: [
+      '请把当前 main.tex 的「{{target}}」改得更像真实学生写的日本語レポート，而不是讲义摘要或模型生成的平均化说明。当前项目类型提示：{{reviewProfile}}。',
+      '',
+      '流程：先拉取 Overleaf 最新版（只运行下一行命令）：',
+      '{{paperAgentPullCommand}}',
+      '',
+      '然后读取 main.tex、本项目 AGENTS.md、.paper-agent/project.json，以及 Japanese Style RAG 的 processed source chunks / latest-draft.json（如果存在）。只在当前项目内工作。',
+      '',
+      '改写目标：',
+      '1. 打破过于均匀的段落结构。不要每节都稳定写成“定义 → 公式 → 解释 → 因此”。允许某些地方更详细，某些地方简略带过，形成真实学生的重点偏好。',
+      '2. 增加少量“自分の理解”。例如用自然的第一人称或学习者视角写出“我理解到什么”，但不要编造个人经历或课程外事实。可以使用类似：',
+      '   - 「この対応により，二体系の状態を行列として見られる点が重要だと感じた。」',
+      '   - 「ここで，単に式を計算するだけでなく，どの空間を残しているのかを意識する必要があると理解した。」',
+      '   - 「この点は，Schmidt rank が entanglement を見る指標になる理由として分かりやすい。」',
+      '3. 增加考察，减少单纯说明。尤其对课程报告，要解释“为什么这个定义/定理重要”“我如何理解它和前后内容的关系”，而不是只罗列定义。',
+      '4. 减少 AI 常见连接句的连续出现。检查并替换过密的「ここで注意すべき点は」「したがって」「この点からも」「基本的な操作である」「重要である」「と言える」。不是全部禁止，而是避免机械重复。',
+      '5. 保留轻微学习者写作痕迹。日语水平设定为：认真写作的留学生/本科生，中上水平但不是母语论文作者。允许少量不完美或略显朴素的表达、偶尔短句、轻微重复；但不能出现影响理解的语法错误、敬体/常体大面积混乱、数学术语错误。',
+      '6. 允许重点不完全平均。可以让你认为关键的 1-2 节更有细节和理解痕迹，其他节更简洁。目标是像人写 report，不像自动覆盖所有小点的总结。',
+      '',
+      '硬性边界：',
+      '- 不改变数学定义、公式、题目顺序、课程事实、引用和 LaTeX 结构的含义。',
+      '- 不新增 source corpus 无法支持的具体事实；若需要但资料没有，保留或新增 [要出典確認]。',
+      '- report_template 只能作格式参考，不能当事实来源。',
+      '- 不把文本改成研究论文风格，不套顶会/期刊审稿口吻。',
+      '- 不为了“真人感”故意制造明显错别字、错误公式、错误结论或过度口语。',
+      '',
+      '执行方式：',
+      '- 先快速诊断当前文本中“太平均/太教科书/太模型”的位置，列 3-6 个要改的点。',
+      '- 只修改 main.tex 中相关正文，不碰无关配置和日志。',
+      '- 改完运行 node tools/compile.mjs 和 node tools/lint.mjs；如果缺少本机 LaTeX，说明依赖缺失。',
+      '- 最后输出：改动摘要、加入了哪些“自分の理解”、哪些地方保留得简略、是否还有 [要出典確認] 或资料不足。',
+    ].join('\n'),
+  },
   citecheck: {
     label: '引文',
     title: '引文核验',
@@ -1066,8 +1104,8 @@ function flowsForProject(project) {
   let ids = Array.isArray(project.promptSet) ? [...project.promptSet] : [];
   if (profile === 'course_report_japanese') {
     ids = orderedUnique(
-      ['brainstorm', 'reportPolish', 'review', 'compile', 'ruleAudit'],
-      ids.filter((id) => ['brainstorm', 'reportPolish', 'review', 'compile', 'ruleAudit'].includes(id)),
+      ['brainstorm', 'reportPolish', 'reportHumanize', 'review', 'compile', 'ruleAudit'],
+      ids.filter((id) => ['brainstorm', 'reportPolish', 'reportHumanize', 'review', 'compile', 'ruleAudit'].includes(id)),
     );
   } else if (profile === 'research_paper') {
     ids = orderedUnique(['brainstorm', 'polish', 'translate', 'review', 'citecheck', 'compile', 'ruleAudit'], ids);
