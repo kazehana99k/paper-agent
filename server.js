@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
+const { Readable } = require('stream');
 const { execFileSync, spawn } = require('child_process');
 const express = require('express');
 const { WebSocketServer } = require('ws');
@@ -1173,6 +1174,64 @@ async function olFetch(p, opts = {}) {
   });
   storeCookies(res);
   return res;
+}
+const HOP_BY_HOP_HEADERS = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+]);
+function copyOverleafResponseHeaders(upstream, res) {
+  for (const [key, value] of upstream.headers) {
+    const lower = key.toLowerCase();
+    if (HOP_BY_HOP_HEADERS.has(lower)) continue;
+    if (lower === 'x-frame-options' || lower === 'content-security-policy') continue;
+    res.setHeader(key, value);
+  }
+}
+function shouldRetryDownloadWithServerLogin(upstream) {
+  const loc = upstream.headers.get('location') || '';
+  return upstream.status === 401 || upstream.status === 403 || (upstream.status >= 300 && upstream.status < 400 && /\/login(?:\b|[/?#])/.test(loc));
+}
+async function fetchOverleafDownload(req, useServerJar = false) {
+  const url = new URL(req.originalUrl || req.url, config.overleafUrl);
+  const headers = {};
+  for (const key of ['accept', 'accept-language', 'range', 'user-agent']) {
+    if (req.headers[key]) headers[key] = req.headers[key];
+  }
+  const cookie = useServerJar ? cookieHeader() : String(req.headers.cookie || '');
+  if (cookie) headers.cookie = cookie;
+  return fetch(url, { redirect: 'manual', headers });
+}
+async function pipeOverleafDownload(req, res) {
+  try {
+    let upstream = await fetchOverleafDownload(req, false);
+    if (shouldRetryDownloadWithServerLogin(upstream)) {
+      await ensureLogin();
+      upstream = await fetchOverleafDownload(req, true);
+    }
+    copyOverleafResponseHeaders(upstream, res);
+    res.status(upstream.status);
+    if (!upstream.body) {
+      res.end();
+      return;
+    }
+    Readable.fromWeb(upstream.body).on('error', (err) => {
+      if (!res.headersSent) res.status(502);
+      res.destroy(err);
+    }).pipe(res);
+  } catch (e) {
+    loggedIn = false;
+    if (!res.headersSent) {
+      res.status(502).type('text/plain').send(`Overleaf 下载代理失败: ${String(e.message || e)}`);
+    } else {
+      res.destroy(e);
+    }
+  }
 }
 async function getCsrf(page) {
   const res = await olFetch(page);
@@ -3079,6 +3138,10 @@ app.post('/__agent/api/push', async (req, res) => {
     res.json({ ok: results.every((r) => r.ok), results });
   } catch (e) { loggedIn = false; res.status(500).json({ ok: false, error: String(e.message || e) }); }
 });
+
+// Overleaf 的 PDF/zip 下载走显式流式转发，避免浏览器下载被通用 iframe 代理的边角响应影响。
+app.get(/^\/download\/project\/.+$/, pipeOverleafDownload);
+app.get(/^\/project\/[^/]+\/download\/.+$/, pipeOverleafDownload);
 
 // 其余全部反代到 Overleaf；剥掉禁止 iframe 的响应头
 const olProxy = createProxyMiddleware({
